@@ -38,12 +38,14 @@ RUN set -eux; \
 		intl \
 		opcache \
 		zip \
+		pdo_mysql \
 	;
 
 ###> recipes ###
 ###> doctrine/doctrine-bundle ###
-RUN set -eux; \
-	install-php-extensions pdo_pgsql
+RUN apt-get update && apt-get install -y git unzip libpq-dev libzip-dev curl \
+    && docker-php-ext-install pdo pdo_mysql zip \
+    && rm -rf /var/lib/apt/lists/*
 ###< doctrine/doctrine-bundle ###
 ###< recipes ###
 
@@ -86,6 +88,12 @@ COPY --link frankenphp/conf.d/20-app.prod.ini $PHP_INI_DIR/app.conf.d/
 
 # prevent the reinstallation of vendors at every changes in the source code
 COPY --link composer.* symfony.* ./
+# Инсталирай Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Копирай и инсталирай PHP зависимости
+COPY composer.json composer.lock ./
+RUN composer install --no-interaction || true
 RUN set -eux; \
 	composer install --no-cache --prefer-dist --no-dev --no-autoloader --no-scripts --no-progress
 
