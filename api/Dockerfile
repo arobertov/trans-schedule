@@ -93,6 +93,7 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # Копирай и инсталирай PHP зависимости
 COPY composer.json composer.lock ./
+ENV COMPOSER_PROCESS_TIMEOUT=800
 RUN composer install --no-interaction || true
 RUN set -eux; \
 	composer install --no-cache --prefer-dist --no-dev --no-autoloader --no-scripts --no-progress

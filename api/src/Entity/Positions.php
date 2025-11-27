@@ -9,10 +9,11 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use ApiPlatform\Metadata\ApiResource;
 use Symfony\Component\Serializer\Annotation\Groups;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: PositionsRepository::class)]
-#[ApiResource(mercure: true)]
 #[ApiResource(
+    mercure: true,
     // Дефинираме кои групи да се използват за четене и запис
     normalizationContext: ['groups' => ['position:read']], 
     denormalizationContext: ['groups' => ['position:write']]
@@ -22,11 +23,18 @@ class Positions
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
-    #[Groups(['position:read', 'position:write'])]
+    #[Groups(['position:read'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
     #[Groups(['position:read', 'position:write'])]
+    #[Assert\NotBlank(message: 'Името на длъжността е задължително')]
+    #[Assert\Length(
+        min: 2,
+        max: 255,
+        minMessage: 'Името на длъжността трябва да е поне {{ limit }} символа',
+        maxMessage: 'Името на длъжността не може да бъде повече от {{ limit }} символа'
+    )]
     private ?string $name = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]

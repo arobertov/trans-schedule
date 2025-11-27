@@ -24,6 +24,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Development image
 FROM base AS dev
 
+# --- ДОБАВИ ТЕЗИ РЕДОВЕ ---
+# Копирай файловете за инсталация на зависимости
+COPY package.json pnpm-lock.yaml ./ 
+# Инсталирай всички зависимости за development и runtime
+RUN pnpm install --frozen-lockfile --no-optional
+# --- КРАЙ НА ДОБАВКАТА ---
+
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=localhost

@@ -1,3 +1,4 @@
+import * as React from "react";
 import { HydraAdmin } from "@api-platform/admin";
 
 const App = () => (

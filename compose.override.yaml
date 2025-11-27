@@ -28,6 +28,7 @@ services:
       target: dev
     volumes:
       - ./pwa:/srv/app
+      - /srv/app/node_modules # <-- ДОБАВИ ТОЗИ РЕД (анонимен volume)
     environment:
       API_PLATFORM_CREATE_CLIENT_ENTRYPOINT: http://php
       API_PLATFORM_CREATE_CLIENT_OUTPUT: .

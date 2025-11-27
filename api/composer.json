@@ -10,6 +10,7 @@
         "doctrine/doctrine-bundle": "^2.18",
         "doctrine/doctrine-migrations-bundle": "^3.2",
         "doctrine/orm": "^3.0",
+        "lexik/jwt-authentication-bundle": "^3.1",
         "nelmio/cors-bundle": "^2.2",
         "phpdocumentor/reflection-docblock": "^5.6",
         "phpstan/phpdoc-parser": "^2.0",
@@ -52,6 +53,9 @@
         "allow-plugins": {
             "symfony/flex": true,
             "symfony/runtime": true
+        },
+        "audit": {
+            "ignore": ["PKSA-365x-2zjk-pt47"]
         }
     },
     "autoload": {

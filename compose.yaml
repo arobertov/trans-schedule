@@ -77,3 +77,9 @@ volumes:
 ###< doctrine/doctrine-bundle ###
 ###> symfony/mercure-bundle ###
 ###< symfony/mercure-bundle ###
+#pnpm add @univerjs/core @univerjs/engine-render @univerjs/engine-formula @univerjs/docs 
+#@univerjs/sheets @univerjs/sheets-formula @univerjs/sheets-numfmt
+
+#npm install @univerjs/core @univerjs/design @univerjs/sheets @univerjs/sheets-ui 
+#@univerjs/ui @univerjs/engine-render @univerjs/engine-formula @univerjs/facade
+#
