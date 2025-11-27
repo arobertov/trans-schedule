@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState } from "react";
-import { useLogin, useNotify } from "react-admin";
+import { useRouter } from "next/router";
 import {
   Avatar,
   Button,
@@ -9,20 +9,31 @@ import {
   TextField,
   Box,
   Typography,
+  Alert,
 } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import { login } from "../../jwt-frontend-auth/src/auth/authService";
 
 export const LoginPage = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const login = useLogin();
-  const notify = useNotify();
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    login({ username, password }).catch(() =>
-      notify("Грешно потребителско име или парола", { type: "error" })
-    );
+    setError("");
+    setLoading(true);
+    try {
+      await login(username, password);
+      router.push("/admin");
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || "Грешно потребителско име или парола";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,6 +64,11 @@ export const LoginPage = () => {
           </Typography>
         </Box>
         <CardContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
           <form onSubmit={handleSubmit}>
             <Box sx={{ marginTop: 1 }}>
               <TextField
@@ -64,6 +80,7 @@ export const LoginPage = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 margin="normal"
+                disabled={loading}
               />
               <TextField
                 label="Парола"
@@ -74,14 +91,16 @@ export const LoginPage = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 margin="normal"
+                disabled={loading}
               />
               <Button
                 type="submit"
                 fullWidth
                 variant="contained"
                 sx={{ mt: 3, mb: 2 }}
+                disabled={loading}
               >
-                Вход
+                {loading ? "Зареждане..." : "Вход"}
               </Button>
             </Box>
           </form>

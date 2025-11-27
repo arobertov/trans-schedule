@@ -1,5 +1,4 @@
-#syntax=docker/dockerfile:1
-
+# (removed `# syntax=` directive to avoid BuildKit frontend grpc errors on some Docker setups)
 
 # Versions
 FROM node:lts AS node_upstream
