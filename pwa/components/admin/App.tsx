@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { HydraAdmin } from "@api-platform/admin";
 import { getToken, isAuthenticated } from "../../jwt-frontend-auth/src/auth/authService";
+import authProvider from "./authProvider";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -29,9 +30,10 @@ const App = () => {
   return (
     <AnyHydraAdmin
       entrypoint={window.origin}
-      title="API Platform admin"
+      title="API Platform Admin"
       fetchHeaders={fetchHeaders}
-    ></AnyHydraAdmin>
+      authProvider={authProvider}
+    />
   );
 };
 

@@ -1,18 +1,20 @@
 import axios from 'axios';
 import { getToken } from '../utils/token';
 
-const baseURL = process.env.NEXT_PUBLIC_API_URL && process.env.NEXT_PUBLIC_API_URL.trim() !== ''
-  ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
-  : '';
-
 const api = axios.create({
-  baseURL,
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://localhost',
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-api.interceptors.request.use(cfg => {
+// Add token to requests
+api.interceptors.request.use((config) => {
   const token = getToken();
-  if (token) cfg.headers['Authorization'] = `Bearer ${token}`;
-  return cfg;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export default api;

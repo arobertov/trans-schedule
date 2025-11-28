@@ -3,11 +3,18 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   async rewrites() {
+    const apiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'https://localhost';
     return [
-      // Proxy API requests to backend to avoid CORS in development
-      { source: '/api/:path*', destination: process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api/:path*` : '/api/:path*' },
-      // Optionally proxy login path
-      { source: '/login', destination: process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/login` : '/login' },
+      // Auth endpoint
+      { 
+        source: '/auth', 
+        destination: `${apiUrl.replace(/\/$/, '')}/auth` 
+      },
+      // API endpoints
+      { 
+        source: '/api/:path*', 
+        destination: `${apiUrl.replace(/\/$/, '')}/api/:path*` 
+      },
     ];
   },
 }
