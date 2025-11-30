@@ -27,7 +27,7 @@ class Positions
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
-    #[Groups(['position:read', 'position:write'])]
+    #[Groups(['position:read', 'position:write', 'employee:read'])]
     #[Assert\NotBlank(message: 'Името на длъжността е задължително')]
     #[Assert\Length(
         min: 2,

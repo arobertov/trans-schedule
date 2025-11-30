@@ -1,9 +1,12 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { HydraAdmin } from "@api-platform/admin";
+import { HydraAdmin, ResourceGuesser } from "@api-platform/admin";
 import { getToken, isAuthenticated } from "../../jwt-frontend-auth/src/auth/authService";
 import authProvider from "./authProvider";
+import { EmployeesList } from "./employees/employeesList";
+import { EmployeesCreate } from "./employees/employeesCreate";
+import { EmployeesShow } from "./employees/employeesShow";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -33,7 +36,11 @@ const App = () => {
       title="API Platform Admin"
       fetchHeaders={fetchHeaders}
       authProvider={authProvider}
-    />
+    >
+      <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} show={EmployeesShow} />
+      <ResourceGuesser name="positions" />
+      <ResourceGuesser name="users" />
+    </AnyHydraAdmin>
   );
 };
 

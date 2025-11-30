@@ -19,7 +19,7 @@ const authProvider: AuthProvider = {
     return isAuthenticated() ? Promise.resolve() : Promise.reject();
   },
   
-  checkError: (error) => {
+  checkError: (error: any) => {
     const status = error.status;
     if (status === 401 || status === 403) {
       logout();
