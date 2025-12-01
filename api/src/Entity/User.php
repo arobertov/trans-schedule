@@ -18,8 +18,11 @@ use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
-/*
-operations: [
+#[ApiResource(
+    mercure: true,
+    normalizationContext: ['groups' => ['user:read']],
+    denormalizationContext: ['groups' => ['user:create', 'user:update']],
+    operations: [
         new GetCollection(),
         new Post(processor: UserPasswordHasher::class, validationContext: ['groups' => ['Default', 'user:create']]),
         new Get(),
@@ -27,15 +30,10 @@ operations: [
         new Patch(processor: UserPasswordHasher::class),
         new Delete(),
     ],
-*/
-
-#[ApiResource(
-    mercure: true,
-    normalizationContext: ['groups' => ['user:read']],
-    denormalizationContext: ['groups' => ['user:create', 'user:update']],
 )]
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\UniqueConstraint(name: 'UNIQ_IDENTIFIER_USERNAME', fields: ['username'])]
+#[UniqueEntity(fields: ['username'], message: 'Потребителското име вече съществува')]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
     #[Groups(['user:read'])]
@@ -64,8 +62,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[Assert\NotBlank(groups: ['user:create'])]
     #[Groups(['user:create', 'user:update'])]
     private ?string $plainPassword = null;
-    
-    
+
+    #[Groups(['user:update'])]
+    private ?string $oldPassword = null;
 
     public function getId(): ?int
     {
@@ -140,6 +139,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function getPlainPassword(): ?string
     {
         return $this->plainPassword;
+    }
+
+    public function setOldPassword(?string $oldPassword): static
+    {
+        $this->oldPassword = $oldPassword;
+
+        return $this;
+    }
+
+    public function getOldPassword(): ?string
+    {
+        return $this->oldPassword;
     }
 
     #[\Deprecated]

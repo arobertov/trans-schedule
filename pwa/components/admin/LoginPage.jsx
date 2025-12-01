@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import {
   Avatar,
   Button,
@@ -10,6 +11,7 @@ import {
   Box,
   Typography,
   Alert,
+  Link as MuiLink,
 } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { login } from "../../jwt-frontend-auth/src/auth/authService";
@@ -100,8 +102,15 @@ export const LoginPage = () => {
                 sx={{ mt: 3, mb: 2 }}
                 disabled={loading}
               >
-                {loading ? "Зареждане..." : "Вход"}
+                {loading ? "Влизане..." : "Вход"}
               </Button>
+              <Box sx={{ textAlign: "center", mt: 2 }}>
+                <Link href="/admin/register" passHref legacyBehavior>
+                  <MuiLink variant="body2">
+                    Нямате акаунт? Регистрирайте се
+                  </MuiLink>
+                </Link>
+              </Box>
             </Box>
           </form>
         </CardContent>

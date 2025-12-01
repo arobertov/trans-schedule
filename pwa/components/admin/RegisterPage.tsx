@@ -1,0 +1,171 @@
+import * as React from "react";
+import { useState } from "react";
+import { useRouter } from "next/router";
+import {
+  Avatar,
+  Button,
+  Card,
+  CardContent,
+  TextField,
+  Box,
+  Typography,
+  Alert,
+  Link as MuiLink,
+} from "@mui/material";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import Link from "next/link";
+import { register, login } from "../../jwt-frontend-auth/src/auth/authService";
+
+export const RegisterPage = () => {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    // Validation
+    if (password !== confirmPassword) {
+      setError("Паролите не съвпадат");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Паролата трябва да е поне 6 символа");
+      return;
+    }
+
+    if (username.length < 3) {
+      setError("Потребителското име трябва да е поне 3 символа");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await register(username, password);
+      setSuccess("Регистрацията е успешна! Влизане в системата...");
+      
+      // Auto-login after successful registration
+      setTimeout(async () => {
+        try {
+          await login(username, password);
+          router.push("/admin");
+        } catch (err) {
+          router.push("/admin/login");
+        }
+      }, 1500);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail 
+        || err?.response?.data?.message 
+        || err?.message 
+        || "Грешка при регистрацията. Моля опитайте отново.";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100vh",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      }}
+    >
+      <Card sx={{ minWidth: 300, maxWidth: 400, width: "100%" }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            padding: 2,
+          }}
+        >
+          <Avatar sx={{ m: 1, bgcolor: "secondary.main" }}>
+            <PersonAddIcon />
+          </Avatar>
+          <Typography component="h1" variant="h5">
+            Регистрация
+          </Typography>
+        </Box>
+        <CardContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+          {success && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {success}
+            </Alert>
+          )}
+          <form onSubmit={handleSubmit}>
+            <Box sx={{ marginTop: 1 }}>
+              <TextField
+                label="Потребителско име"
+                name="username"
+                type="text"
+                fullWidth
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                margin="normal"
+                disabled={loading || !!success}
+                helperText="Минимум 3 символа"
+              />
+              <TextField
+                label="Парола"
+                name="password"
+                type="password"
+                fullWidth
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                margin="normal"
+                disabled={loading || !!success}
+                helperText="Минимум 6 символа"
+              />
+              <TextField
+                label="Потвърдете паролата"
+                name="confirmPassword"
+                type="password"
+                fullWidth
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                margin="normal"
+                disabled={loading || !!success}
+              />
+              <Button
+                type="submit"
+                fullWidth
+                variant="contained"
+                sx={{ mt: 3, mb: 2 }}
+                disabled={loading || !!success}
+              >
+                {loading ? "Регистриране..." : "Регистрация"}
+              </Button>
+              <Box sx={{ textAlign: "center", mt: 2 }}>
+                <Link href="/admin/login" passHref legacyBehavior>
+                  <MuiLink variant="body2">
+                    Имате акаунт? Влезте тук
+                  </MuiLink>
+                </Link>
+              </Box>
+            </Box>
+          </form>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+};
