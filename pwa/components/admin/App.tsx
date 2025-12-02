@@ -1,5 +1,5 @@
 import * as React from "react";
-import { HydraAdmin, ResourceGuesser } from "@api-platform/admin";
+import { HydraAdmin, ResourceGuesser, hydraDataProvider, fetchHydra } from "@api-platform/admin";
 import { getToken } from "../../jwt-frontend-auth/src/auth/authService";
 import authProvider from "./authProvider";
 import { EmployeesList } from "./employees/employeesList";
@@ -12,16 +12,33 @@ import { UsersEdit } from "./users/UsersEdit";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
-const App = () => {
-  // Pass the JWT token to HydraAdmin via custom fetch
+// Wrap fetchHydra to add JWT token
+const authenticatedFetchHydra = (url: any, options: any = {}) => {
   const token = getToken();
-  const fetchHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+  console.log('authenticatedFetchHydra called:', url.toString(), 'hasToken:', !!token);
+  
+  const headers = {
+    ...options.headers,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  
+  return fetchHydra(url, { ...options, headers });
+};
+
+const App = () => {
+  console.log('App rendering, hasToken:', !!getToken());
+
+  // Create dataProvider with authenticated fetch
+  const dataProvider = hydraDataProvider({
+    entrypoint: window.origin,
+    httpClient: authenticatedFetchHydra,
+  });
 
   return (
     <AnyHydraAdmin
       entrypoint={window.origin}
       title="API Platform Admin"
-      fetchHeaders={fetchHeaders}
+      dataProvider={dataProvider}
       authProvider={authProvider}
       dashboard={Dashboard}
     >

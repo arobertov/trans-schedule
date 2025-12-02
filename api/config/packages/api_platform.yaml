@@ -9,6 +9,9 @@ api_platform:
         stateless: true
         cache_headers:
             vary: ['Content-Type', 'Authorization', 'Origin']
+    formats:
+        jsonld:
+            mime_types: ['application/ld+json']
     swagger:
         api_keys:
             JWT:

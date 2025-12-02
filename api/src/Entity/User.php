@@ -23,12 +23,22 @@ use Symfony\Component\Validator\Constraints as Assert;
     normalizationContext: ['groups' => ['user:read']],
     denormalizationContext: ['groups' => ['user:create', 'user:update']],
     operations: [
-        new GetCollection(),
-        new Post(processor: UserPasswordHasher::class, validationContext: ['groups' => ['Default', 'user:create']]),
-        new Get(),
-        new Put(processor: UserPasswordHasher::class),
-        new Patch(processor: UserPasswordHasher::class),
-        new Delete(),
+        new GetCollection(security: "is_granted('ROLE_ADMIN') or is_granted('ROLE_SUPER_ADMIN')"),
+        new Post(
+            processor: UserPasswordHasher::class, 
+            validationContext: ['groups' => ['Default', 'user:create']],
+            security: "is_granted('ROLE_ADMIN') or is_granted('ROLE_SUPER_ADMIN')"
+        ),
+        new Get(security: "is_granted('USER_VIEW', object)"),
+        new Put(
+            processor: UserPasswordHasher::class,
+            security: "is_granted('USER_EDIT', object)"
+        ),
+        new Patch(
+            processor: UserPasswordHasher::class,
+            security: "is_granted('USER_EDIT', object)"
+        ),
+        new Delete(security: "is_granted('USER_DELETE', object)"),
     ],
 )]
 #[ORM\Entity(repositoryClass: UserRepository::class)]
@@ -50,6 +60,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     /**
      * @var list<string> The user roles
      */
+    #[Groups(['user:read', 'user:roles'])]
     #[ORM\Column]
     private array $roles = [];
 

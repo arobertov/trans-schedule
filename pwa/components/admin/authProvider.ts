@@ -4,9 +4,12 @@ import { login as jwtLogin, logout, isAuthenticated, getToken } from '../../jwt-
 const authProvider: AuthProvider = {
   login: async ({ username, password }) => {
     try {
-      await jwtLogin(username, password);
+      const token = await jwtLogin(username, password);
+      console.log('Login successful, token:', token?.substring(0, 20) + '...');
+      console.log('Token from storage:', getToken()?.substring(0, 20) + '...');
       return Promise.resolve();
     } catch (error) {
+      console.log('Login failed:', error);
       return Promise.reject(new Error('Грешно потребителско име или парола'));
     }
   },
@@ -17,10 +20,14 @@ const authProvider: AuthProvider = {
   },
   
   checkAuth: () => {
-    return isAuthenticated() ? Promise.resolve() : Promise.reject();
+    const isAuth = isAuthenticated();
+    const token = getToken();
+    console.log('checkAuth called:', { isAuth, hasToken: !!token });
+    return isAuth ? Promise.resolve() : Promise.reject();
   },
   
   checkError: (error: any) => {
+    console.log('checkError called:', error);
     const status = error.status;
     if (status === 401 || status === 403) {
       logout();

@@ -8,6 +8,8 @@ use ApiPlatform\State\ProcessorInterface;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Bundle\SecurityBundle\Security;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
  * @implements ProcessorInterface<User, User|void>
@@ -17,7 +19,8 @@ final readonly class UserPasswordHasher implements ProcessorInterface
     public function __construct(
         private ProcessorInterface $processor,
         private UserPasswordHasherInterface $passwordHasher,
-        private UserRepository $userRepository
+        private UserRepository $userRepository,
+        private Security $security
     )
     {
     }
@@ -27,6 +30,18 @@ final readonly class UserPasswordHasher implements ProcessorInterface
      */
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): User
     {
+        // Check if roles are being modified (only ROLE_SUPER_ADMIN can do this)
+        if ($operation instanceof \ApiPlatform\Metadata\Patch || $operation instanceof \ApiPlatform\Metadata\Put) {
+            $userId = $uriVariables['id'] ?? $data->getId();
+            $existingUser = $this->userRepository->find($userId);
+            
+            if ($existingUser && $data->getRoles() !== $existingUser->getRoles()) {
+                if (!$this->security->isGranted('ROLE_SUPER_ADMIN')) {
+                    throw new AccessDeniedHttpException('Само ROLE_SUPER_ADMIN може да променя ролите на потребителите');
+                }
+            }
+        }
+
         if (!$data->getPlainPassword()) {
             return $this->processor->process($data, $operation, $uriVariables, $context);
         }
