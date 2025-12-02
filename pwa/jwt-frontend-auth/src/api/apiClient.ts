@@ -24,6 +24,10 @@ api.interceptors.request.use((config) => {
   if (config.url?.includes('/auth')) {
     config.headers['Content-Type'] = 'application/json';
   }
+  // Use application/merge-patch+json for PATCH requests
+  else if (config.method === 'patch') {
+    config.headers['Content-Type'] = 'application/merge-patch+json';
+  }
   
   return config;
 });

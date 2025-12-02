@@ -21,7 +21,9 @@ import {
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import api from "../../jwt-frontend-auth/src/api/apiClient";
+import { isAuthenticated } from "../../jwt-frontend-auth/src/auth/authService";
 
 interface User {
   id: number;
@@ -35,18 +37,63 @@ export const UsersListPage = () => {
   const router = useRouter();
 
   useEffect(() => {
-    loadUsers();
+    const checkAuthAndLoad = async () => {
+      if (!isAuthenticated()) {
+        console.log("Not authenticated, redirecting to login");
+        router.push("/admin/login");
+        return;
+      }
+      console.log("Authenticated, loading users...");
+      await loadUsers();
+    };
+    
+    checkAuthAndLoad();
   }, []);
 
   const loadUsers = async () => {
     setLoading(true);
     setError("");
+    
+    console.log("loadUsers() called");
+    console.log("API URL:", process.env.NEXT_PUBLIC_API_URL || 'https://localhost');
+    
     try {
+      console.log("Fetching /users...");
       const response = await api.get("/users");
-      const usersData = response.data["hydra:member"] || response.data;
-      setUsers(usersData);
+      console.log("Response received:", response);
+      
+      // API Platform JSON-LD format uses 'member' or 'hydra:member'
+      const usersData = response.data.member || response.data["hydra:member"] || response.data;
+      console.log("Users data:", usersData);
+      console.log("Is array:", Array.isArray(usersData));
+      
+      // Ensure usersData is an array
+      if (Array.isArray(usersData)) {
+        setUsers(usersData);
+      } else {
+        console.error("Users data is not an array:", usersData);
+        setUsers([]);
+        setError("Данните от сървъра не са в правилен формат");
+      }
     } catch (err: any) {
-      setError("Грешка при зареждане на потребителите");
+      console.error("Error loading users:", err);
+      console.error("Error response:", err?.response);
+      console.error("Error status:", err?.response?.status);
+      console.error("Error data:", err?.response?.data);
+      
+      // If unauthorized, redirect to login
+      if (err?.response?.status === 401) {
+        console.log("Unauthorized, redirecting to login");
+        router.push("/admin/login");
+        return;
+      }
+      
+      const msg = err?.response?.data?.detail 
+        || err?.response?.data?.message 
+        || err?.response?.data?.["hydra:description"]
+        || err?.message 
+        || "Грешка при зареждане на потребителите";
+      setError(`Грешка: ${msg} (Status: ${err?.response?.status || 'N/A'})`);
     } finally {
       setLoading(false);
     }
@@ -81,10 +128,15 @@ export const UsersListPage = () => {
     <Box sx={{ p: 3 }}>
       <Card>
         <CardContent>
-          <Box sx={{ display: "flex", justifyContent: "space-between", mb: 3 }}>
-            <Typography variant="h5" component="h2">
-              Потребители
-            </Typography>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <IconButton onClick={() => router.push("/admin")} color="primary">
+                <ArrowBackIcon />
+              </IconButton>
+              <Typography variant="h5" component="h2">
+                Потребители
+              </Typography>
+            </Box>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -110,7 +162,7 @@ export const UsersListPage = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.length === 0 ? (
+                {!Array.isArray(users) || users.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={3} align="center">
                       Няма налични потребители

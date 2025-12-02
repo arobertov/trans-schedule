@@ -1,17 +1,18 @@
 import { AuthProvider } from 'react-admin';
-import { logout, isAuthenticated, getToken } from '../../jwt-frontend-auth/src/auth/authService';
+import { login as jwtLogin, logout, isAuthenticated, getToken } from '../../jwt-frontend-auth/src/auth/authService';
 
 const authProvider: AuthProvider = {
-  login: () => {
-    // Пренасочи към нашата custom login страница
-    window.location.href = '/admin/login';
-    return Promise.reject(); // Reject за да не се опитва да логне
+  login: async ({ username, password }) => {
+    try {
+      await jwtLogin(username, password);
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(new Error('Грешно потребителско име или парола'));
+    }
   },
   
   logout: () => {
     logout();
-    // Пренасочи към нашата custom login страница
-    window.location.href = '/admin/login';
     return Promise.resolve();
   },
   
@@ -23,7 +24,6 @@ const authProvider: AuthProvider = {
     const status = error.status;
     if (status === 401 || status === 403) {
       logout();
-      window.location.href = '/admin/login';
       return Promise.reject();
     }
     return Promise.resolve();

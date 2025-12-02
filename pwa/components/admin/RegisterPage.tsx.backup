@@ -11,8 +11,10 @@ import {
   Typography,
   Alert,
   Link as MuiLink,
+  IconButton,
 } from "@mui/material";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Link from "next/link";
 import { register, login } from "../../jwt-frontend-auth/src/auth/authService";
 
@@ -89,8 +91,15 @@ export const RegisterPage = () => {
             flexDirection: "column",
             alignItems: "center",
             padding: 2,
+            position: "relative",
           }}
         >
+          <IconButton
+            onClick={() => router.push("/admin/users")}
+            sx={{ position: "absolute", left: 8, top: 8 }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
           <Avatar sx={{ m: 1, bgcolor: "secondary.main" }}>
             <PersonAddIcon />
           </Avatar>

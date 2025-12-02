@@ -11,8 +11,10 @@ import {
   Typography,
   Alert,
   CircularProgress,
+  IconButton,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { getUser, updateUser } from "../../jwt-frontend-auth/src/auth/authService";
 
 export const EditUserPage = () => {
@@ -150,8 +152,15 @@ export const EditUserPage = () => {
             flexDirection: "column",
             alignItems: "center",
             padding: 2,
+            position: "relative",
           }}
         >
+          <IconButton
+            onClick={() => router.push("/admin/users")}
+            sx={{ position: "absolute", left: 8, top: 8 }}
+          >
+            <ArrowBackIcon />
+          </IconButton>
           <Avatar sx={{ m: 1, bgcolor: "secondary.main" }}>
             <EditIcon />
           </Avatar>

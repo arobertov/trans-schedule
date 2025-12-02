@@ -6,6 +6,7 @@ namespace App\State;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
 use App\Entity\User;
+use App\Repository\UserRepository;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
@@ -15,7 +16,8 @@ final readonly class UserPasswordHasher implements ProcessorInterface
 {
     public function __construct(
         private ProcessorInterface $processor,
-        private UserPasswordHasherInterface $passwordHasher
+        private UserPasswordHasherInterface $passwordHasher,
+        private UserRepository $userRepository
     )
     {
     }
@@ -29,14 +31,28 @@ final readonly class UserPasswordHasher implements ProcessorInterface
             return $this->processor->process($data, $operation, $uriVariables, $context);
         }
 
-        // For update operations (PATCH/PUT), verify the old password if provided
+        // Get user ID from URI variables or from data object
+        $userId = $uriVariables['id'] ?? $data->getId();
+
+        // For update operations (PATCH/PUT), old password is REQUIRED
         if ($operation instanceof \ApiPlatform\Metadata\Patch || $operation instanceof \ApiPlatform\Metadata\Put) {
-            if ($data->getOldPassword()) {
-                // Get the existing user from database to verify old password
-                $existingPassword = $data->getPassword();
-                if (!$existingPassword || !$this->passwordHasher->isPasswordValid($data, $data->getOldPassword())) {
-                    throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Старата парола е неправилна');
-                }
+            // Old password is required when changing password
+            if (!$data->getOldPassword()) {
+                throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Старата парола е задължителна за промяна на паролата');
+            }
+            
+            // Get the existing user from database to verify old password
+            $existingUser = $this->userRepository->find($userId);
+            
+            if (!$existingUser) {
+                throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Потребителят не е намерен');
+            }
+            
+            // Verify old password against the existing hashed password
+            $isValid = $this->passwordHasher->isPasswordValid($existingUser, $data->getOldPassword());
+            
+            if (!$isValid) {
+                throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Старата парола е неправилна');
             }
         }
 
