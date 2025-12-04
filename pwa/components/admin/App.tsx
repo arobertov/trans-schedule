@@ -9,6 +9,8 @@ import { Dashboard } from "./Dashboard";
 import { UsersList } from "./users/UsersList";
 import { UsersCreate } from "./users/UsersCreate";
 import { UsersEdit } from "./users/UsersEdit";
+import {PositionsList} from "./positions/PositionList";
+import {PositionsShow} from "./positions/PositionShow";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -43,7 +45,7 @@ const App = () => {
       dashboard={Dashboard}
     >
       <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} show={EmployeesShow} />
-      <ResourceGuesser name="positions" />
+      <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
       <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />
     </AnyHydraAdmin>
   );

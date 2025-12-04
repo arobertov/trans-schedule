@@ -45,7 +45,7 @@ class Positions
      * @var Collection<int, Employees>
      */
     #[ORM\OneToMany(targetEntity: Employees::class, mappedBy: 'position')]
-    
+    #[Groups(['position:read'])]
     private Collection $employees;
 
     public function __construct()
