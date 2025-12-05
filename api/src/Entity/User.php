@@ -57,6 +57,16 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 180)]
     private ?string $username = null;
 
+    #[Assert\NotBlank]
+    #[Groups(['user:read', 'user:create', 'user:update'])]
+    #[ORM\Column(length: 180)]
+    private ?string $firstName  = null;
+
+    #[Assert\NotBlank]
+    #[Groups(['user:read', 'user:create', 'user:update'])]
+    #[ORM\Column(length: 180)]
+    private ?string $lastName  = null;
+
     /**
      * @var list<string> The user roles
      */
@@ -90,6 +100,30 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setUsername(string $username): static
     {
         $this->username = $username;
+
+        return $this;
+    }
+    
+    public function getFirstName(): ?string
+    {
+        return $this->firstName;
+    }
+
+    public function setFirstName(string $firstName): static
+    {
+        $this->firstName = $firstName;
+
+        return $this;
+    }
+
+    public function getLastName(): ?string
+    {
+        return $this->lastName;
+    }
+
+    public function setLastName(string $lastName): static
+    {
+        $this->lastName = $lastName;
 
         return $this;
     }
