@@ -11,7 +11,7 @@ import {
   FunctionField,
 } from "react-admin";
 import {getHighestRoleInfo} from "../../../helpers/RoleMaper";
-import RoleChip from "./RoleChip";
+import RoleChip from "./roleChip";
 
 const UsersListActions = () => (
   <TopToolbar>
