@@ -9,6 +9,8 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\ApiProperty;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -18,8 +20,11 @@ use Symfony\Component\Validator\Constraints as Assert;
     mercure: true,
     normalizationContext: ['groups' => ['shift:read']], 
     denormalizationContext: ['groups' => ['shift:write']],
-    paginationItemsPerPage: 30
+    paginationItemsPerPage: 30,
+    paginationClientEnabled: true,
+    paginationClientItemsPerPage: true
 )]
+#[ApiFilter(SearchFilter::class, properties: ['day_type' => 'exact', 'season' => 'exact', 'shift_code' => 'partial'])]
 #[ORM\HasLifecycleCallbacks]
 class ShiftSchedules
 {
