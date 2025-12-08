@@ -63,8 +63,8 @@ CREATE TABLE IF NOT EXISTS employees (
 CREATE TABLE IF NOT EXISTS shift_schedules (
     id INT AUTO_INCREMENT PRIMARY KEY,
     shift_code VARCHAR(20) NOT NULL COMMENT 'Код на смяна (СМ1-С, СМ2-Д)',
-    day_type ENUM('weekday', 'holiday') NOT NULL COMMENT 'Тип ден',
-    season ENUM('winter', 'summer') NOT NULL COMMENT 'Сезон',
+    day_type ENUM('Делник', 'Празник') NOT NULL COMMENT 'Тип ден',
+    season ENUM('Зимен', 'Летен') NOT NULL COMMENT 'Сезон',
     worked_time DECIMAL(5,2) NOT NULL COMMENT 'Отработено време (часове)',
     night_work DECIMAL(5,2) DEFAULT 0 COMMENT 'Нощен труд (часове)',
     total_time DECIMAL(5,2) GENERATED ALWAYS AS (worked_time + (night_work * 0.143)) STORED COMMENT 'Общо време с коефициент',

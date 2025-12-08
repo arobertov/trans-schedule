@@ -1,10 +1,17 @@
 import * as React from "react";
 import { HydraAdmin, ResourceGuesser, hydraDataProvider, fetchHydra } from "@api-platform/admin";
+import { CustomRoutes } from 'react-admin';
+import { Route } from 'react-router-dom';
 import { getToken } from "../../jwt-frontend-auth/src/auth/authService";
 import authProvider from "./authProvider";
 import { EmployeesList } from "./employees/employeesList";
 import { EmployeesCreate } from "./employees/employeesCreate";
 import { EmployeesShow } from "./employees/employeesShow";
+import { ShiftsList } from "./shifts/shiftsList";
+import { ShiftsCreate } from "./shifts/shiftsCreate";
+import { ShiftsEdit } from "./shifts/shiftsEdit";
+import { ShiftsShow } from "./shifts/shiftsShow";
+import { ShiftsBulkImport } from "./shifts/ShiftsBulkImport";
 import { Dashboard } from "./Dashboard";
 import { UsersList } from "./users/UsersList";
 import { UsersCreate } from "./users/UsersCreate";
@@ -18,6 +25,21 @@ const AnyHydraAdmin: any = HydraAdmin;
 const authenticatedFetchHydra = (url: any, options: any = {}) => {
   const token = getToken();
   console.log('authenticatedFetchHydra called:', url.toString(), 'hasToken:', !!token);
+  
+  // Проверка дали токенът е изтекъл
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const exp = payload.exp * 1000;
+      if (Date.now() >= exp) {
+        console.log('Token expired in fetch, redirecting to login');
+        window.location.href = '/';
+        return Promise.reject(new Error('Token expired'));
+      }
+    } catch (error) {
+      console.error('Error parsing token in fetch:', error);
+    }
+  }
   
   const headers = {
     ...options.headers,
@@ -47,6 +69,11 @@ const App = () => {
       <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} show={EmployeesShow} />
       <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
       <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />
+      <ResourceGuesser name="shift_schedules" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />
+      
+      <CustomRoutes>
+        <Route path="/shifts/bulk-import" element={<ShiftsBulkImport />} />
+      </CustomRoutes>
     </AnyHydraAdmin>
   );
 };
