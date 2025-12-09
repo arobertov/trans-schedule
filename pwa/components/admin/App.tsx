@@ -7,6 +7,7 @@ import authProvider from "./authProvider";
 import { EmployeesList } from "./employees/employeesList";
 import { EmployeesCreate } from "./employees/employeesCreate";
 import { EmployeesShow } from "./employees/employeesShow";
+import { EmployeesBulkImport } from "./employees/EmployeesBulkImport";
 import { ShiftsList } from "./shifts/shiftsList";
 import { ShiftsCreate } from "./shifts/shiftsCreate";
 import { ShiftsEdit } from "./shifts/shiftsEdit";
@@ -16,8 +17,10 @@ import { Dashboard } from "./Dashboard";
 import { UsersList } from "./users/UsersList";
 import { UsersCreate } from "./users/UsersCreate";
 import { UsersEdit } from "./users/UsersEdit";
-import {PositionsList} from "./positions/PositionList";
-import {PositionsShow} from "./positions/PositionShow";
+import { PositionsList } from "./positions/PositionList";
+import { PositionsShow } from "./positions/PositionShow";
+import { CustomLayout } from "./CustomLayout";
+import i18nProvider from "./i18n";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -65,6 +68,8 @@ const App = () => {
       dataProvider={dataProvider}
       authProvider={authProvider}
       dashboard={Dashboard}
+      layout={CustomLayout}
+      i18nProvider={i18nProvider}
     >
       <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} show={EmployeesShow} />
       <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
@@ -72,6 +77,7 @@ const App = () => {
       <ResourceGuesser name="shift_schedules" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />
       
       <CustomRoutes>
+        <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
         <Route path="/shifts/bulk-import" element={<ShiftsBulkImport />} />
       </CustomRoutes>
     </AnyHydraAdmin>
