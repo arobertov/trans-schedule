@@ -34,7 +34,9 @@ use Symfony\Component\Validator\Constraints as Assert;
     mercure: true,
     normalizationContext: ['groups' => ['employee:read']], 
     denormalizationContext: ['groups' => ['employee:write']],
-    paginationItemsPerPage: 30
+    paginationItemsPerPage: 30,
+    paginationClientEnabled: true,
+    paginationClientItemsPerPage: true
 )]
 #[ORM\HasLifecycleCallbacks]
 class Employees

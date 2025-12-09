@@ -151,7 +151,7 @@ export const EmployeesBulkImport = () => {
               last_name: last_name,
               phone: row.phone || '',
               email: row.email || '',
-              position: `/positions/${position.id}`,
+              position: `${position.id}`,
               notes: '',
               status: 'активен', // Статус активен по подразбиране
             }
