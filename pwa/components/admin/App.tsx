@@ -6,6 +6,7 @@ import { getToken } from "../../jwt-frontend-auth/src/auth/authService";
 import authProvider from "./authProvider";
 import { EmployeesList } from "./employees/employeesList";
 import { EmployeesCreate } from "./employees/employeesCreate";
+import { EmployeesEdit } from "./employees/EmployeesEdit";
 import { EmployeesShow } from "./employees/employeesShow";
 import { EmployeesBulkImport } from "./employees/EmployeesBulkImport";
 import { ShiftsList } from "./shifts/shiftsList";
@@ -71,7 +72,7 @@ const App = () => {
       layout={CustomLayout}
       i18nProvider={i18nProvider}
     >
-      <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} show={EmployeesShow} />
+      <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} edit={EmployeesEdit} show={EmployeesShow} />
       <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
       <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />
       <ResourceGuesser name="shift_schedules" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />

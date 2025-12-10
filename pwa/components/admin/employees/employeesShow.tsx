@@ -6,6 +6,7 @@ import WorkIcon from '@mui/icons-material/Work';
 import ContactPhoneIcon from '@mui/icons-material/ContactPhone';
 import EmailIcon from '@mui/icons-material/Email';
 import NotesIcon from '@mui/icons-material/Notes';
+import { Link } from 'react-router-dom';
 
 export const EmployeesShow = () => (
     <ShowGuesser>
@@ -20,9 +21,60 @@ export const EmployeesShow = () => (
                         </Stack>
                         <Divider sx={{ mb: 2 }} />
                         <Stack direction="row" spacing={3} alignItems="center">
-                            <FieldGuesser source="first_name" label="Име" />
-                            <FieldGuesser source="middle_name" label="Презиме" />
-                            <FieldGuesser source="last_name" label="Фамилия" />
+                            <FunctionField
+                                label="Име"
+                                render={(record: any) => (
+                                    <Link
+                                        to={`/employees/${encodeURIComponent(record.id)}`}
+                                        style={{ textDecoration: 'none', color: 'inherit' }} // Премахваме стандартното подчертаване на линка
+                                    >
+                                        <Typography
+                                            variant="h5"
+                                            fontWeight="bold"
+                                            color="secondary"
+                                            sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                                        >
+                                            {record.first_name}
+                                        </Typography>
+                                    </Link>
+
+                                )}
+                            />
+                            <FunctionField
+                                label="Презиме"
+                                render={(record: any) => (
+                                    <Link
+                                        to={`/employees/${encodeURIComponent(record.id)}`}
+                                        style={{ textDecoration: 'none', color: 'inherit' }} // Премахваме стандартното подчертаване на линка
+                                    >
+                                        <Typography
+                                            variant="h5"
+                                            fontWeight="bold"
+                                            sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                                        >
+                                            {record.middle_name}
+                                        </Typography>
+
+                                    </Link>
+                                )}
+                            />
+                            <FunctionField
+                                label="Фамилия"
+                                render={(record: any) => (
+                                    <Link
+                                        to={`/employees/${encodeURIComponent(record.id)}`}
+                                        style={{ textDecoration: 'none', color: 'inherit' }} // Премахваме стандартното подчертаване на линка
+                                    >
+                                        <Typography
+                                            variant="h5"
+                                            fontWeight="bold"
+                                            sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                                        >
+                                            {record.last_name}
+                                        </Typography>
+                                    </Link>
+                                )}
+                            />
                         </Stack>
                     </Paper>
                 </Grid>
@@ -32,22 +84,26 @@ export const EmployeesShow = () => (
                     <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
                             <WorkIcon color="primary" />
-                            <Typography variant="h6" color="primary">Позиция и статус</Typography>
+                            <Typography variant="h6" color="primary">Длъжност и статус</Typography>
                         </Stack>
                         <Divider sx={{ mb: 2 }} />
                         <Stack spacing={2}>
                             <FunctionField
-                                label="Позиция"
+                                label="Длъжност"
                                 render={(record: any) => (
-                                    <ChipField 
-                                        record={{ value: record.position?.name || 'Не е зададена' }} 
-                                        source="value" 
+                                    <ChipField
+                                        record={{ value: record.position?.name || 'Не е зададена' }}
+                                        source="value"
                                         color="primary"
                                         variant="outlined"
                                     />
                                 )}
                             />
-                            <FieldGuesser source="status" label="Статус" />
+                            <ChipField 
+                                source="status" 
+                                color="primary"
+                                variant="outlined"
+                            />
                         </Stack>
                     </Paper>
                 </Grid>
@@ -57,7 +113,7 @@ export const EmployeesShow = () => (
                     <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
                             <ContactPhoneIcon color="primary" />
-                            <Typography variant="h6" color="primary">Контактна информация</Typography>
+                            <Typography variant="h6" color="primary">Информация за контакт</Typography>
                         </Stack>
                         <Divider sx={{ mb: 2 }} />
                         <Stack spacing={2}>
@@ -87,7 +143,7 @@ export const EmployeesShow = () => (
 
                 {/* Метаданни */}
                 <Grid item xs={12} md={6}>
-                    <Paper elevation={1} sx={{ p: 2, bgcolor: 'grey.50' }}>
+                    <Paper elevation={1} sx={{ p: 2}}>
                         <Typography variant="caption" color="text.secondary">
                             Добавен на:
                         </Typography>
@@ -95,7 +151,7 @@ export const EmployeesShow = () => (
                     </Paper>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                    <Paper elevation={1} sx={{ p: 2, bgcolor: 'grey.50' }}>
+                    <Paper elevation={1} sx={{ p: 2 }}>
                         <Typography variant="caption" color="text.secondary">
                             Последна промяна:
                         </Typography>

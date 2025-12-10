@@ -4,9 +4,7 @@ import { Link } from 'react-router-dom';
 import UploadIcon from '@mui/icons-material/Upload';
 import { Box, Typography, Card, CardContent } from '@mui/material';
 import WorkIcon from '@mui/icons-material/Work';
-import BeachAccessIcon from '@mui/icons-material/BeachAccess';
-import AcUnitIcon from '@mui/icons-material/AcUnit';
-import WbSunnyIcon from '@mui/icons-material/WbSunny';
+
 
 const ListActions = () => (
     <TopToolbar>
