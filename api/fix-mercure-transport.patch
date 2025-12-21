@@ -1,0 +1,10 @@
+*** Begin Patch
+*** Update File: api/frankenphp/Caddyfile
+@@
+-		# Transport to use (default to Bolt)
+-		transport_url {$MERCURE_TRANSPORT_URL:bolt:///data/mercure.db}
++		# Transport to use (default to Bolt)
++		transport bolt {
++			url {$MERCURE_TRANSPORT_URL:bolt:///data/mercure.db}
++		}
+*** End Patch
