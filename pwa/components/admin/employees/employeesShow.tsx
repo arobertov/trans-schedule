@@ -79,7 +79,7 @@ export const EmployeesShow = () => (
                     </Paper>
                 </Grid>
 
-                {/* Позиция и статус */}
+                {/* Длъжност и статус */}
                 <Grid item xs={12} md={6}>
                     <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>

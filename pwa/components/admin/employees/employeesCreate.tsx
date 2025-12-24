@@ -80,7 +80,7 @@ export const EmployeesCreate = () => (
             sort={{ field: 'name', order: 'ASC' }}
           >
             <AutocompleteInput 
-              label="Позиция" 
+              label="Длъжност" 
               optionText="name"
               validate={validateRequired}
               fullWidth

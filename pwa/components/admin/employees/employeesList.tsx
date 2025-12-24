@@ -78,7 +78,7 @@ export const EmployeesList = () => (
             <FieldGuesser source="updated_at" label="Обновен на" />
             <FieldGuesser source="status" label="Статус" />
             <FunctionField
-                label="Позиция"
+                label="Длъжност"
                 render={(record: any) => record.position?.name || '-'}
             />
         </DatagridConfigurable>

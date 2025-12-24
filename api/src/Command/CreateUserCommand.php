@@ -30,6 +30,8 @@ class CreateUserCommand extends Command
         $this
             ->addArgument('username', InputArgument::REQUIRED, 'Потребителско име')
             ->addArgument('password', InputArgument::REQUIRED, 'Парола')
+            ->addArgument('firstName', InputArgument::OPTIONAL, 'Собствено име')
+            ->addArgument('lastName', InputArgument::OPTIONAL, 'Фамилно име')
             ->addArgument('role', InputArgument::OPTIONAL, 'Роля на потребителя (по подразбиране: ROLE_USER)');
     }
 
@@ -37,6 +39,8 @@ class CreateUserCommand extends Command
     {
         $username = $input->getArgument('username');
         $password = $input->getArgument('password');
+        $firstName = $input->getArgument('firstName') ?? '';
+        $lastName = $input->getArgument('lastName') ?? '';
         $role = $input->getArgument('role') ?? 'ROLE_USER';
 
         $user = new User();
@@ -47,6 +51,8 @@ class CreateUserCommand extends Command
             $password
         );
         $user->setPassword($hashedPassword)
+            ->setFirstName($firstName)
+            ->setLastName($lastName)
             ->setRoles([$input->getArgument('role') ?? 'ROLE_USER']);
 
         $this->entityManager->persist($user);

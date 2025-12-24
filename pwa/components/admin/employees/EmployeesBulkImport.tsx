@@ -110,7 +110,7 @@ export const EmployeesBulkImport = () => {
     }
 
     if (!selectedPosition) {
-      notify('Моля изберете позиция', { type: 'warning' });
+      notify('Моля изберете длъжност', { type: 'warning' });
       return;
     }
 
@@ -125,7 +125,7 @@ export const EmployeesBulkImport = () => {
 
       const position = positions.find(p => p.id.toString() === selectedPosition);
       if (!position) {
-        notify('Избраната позиция не е намерена', { type: 'error' });
+        notify('Избраната длъжност не е намерена', { type: 'error' });
         setIsLoading(false);
         return;
       }
@@ -216,7 +216,7 @@ export const EmployeesBulkImport = () => {
         </Typography>
         
         <Typography variant="body2" color="textSecondary" paragraph>
-          Първо изберете позиция, след което копирайте редовете от Excel таблица. Статусът ще бъде автоматично "активен".
+          Първо изберете длъжност, след което копирайте редовете от Excel таблица. Статусът ще бъде автоматично "активен".
           <br />
           <strong>Колони (в този ред):</strong> Пълно име (Име Презиме Фамилия) | Телефон | Имейл
           <br />
@@ -226,10 +226,10 @@ export const EmployeesBulkImport = () => {
         <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid item xs={12}>
             <FormControl fullWidth>
-              <InputLabel>Позиция</InputLabel>
+              <InputLabel>Длъжност</InputLabel>
               <Select
                 value={selectedPosition}
-                label="Позиция"
+                label="Длъжност"
                 onChange={(e: SelectChangeEvent) => setSelectedPosition(e.target.value)}
                 disabled={loadingPositions || positions.length === 0}
               >
@@ -285,7 +285,7 @@ export const EmployeesBulkImport = () => {
                     <TableCell>Пълно име</TableCell>
                     <TableCell>Телефон</TableCell>
                     <TableCell>Имейл</TableCell>
-                    <TableCell>Позиция</TableCell>
+                    <TableCell>Длъжност</TableCell>
                     <TableCell>Статус</TableCell>
                   </TableRow>
                 </TableHead>

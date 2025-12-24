@@ -81,7 +81,7 @@ export const EmployeesEdit = () => (
             sort={{ field: 'name', order: 'ASC' }}
           >
             <AutocompleteInput 
-              label="Позиция" 
+              label="Длъжност" 
               optionText="name"
               validate={validateRequired}
               fullWidth
