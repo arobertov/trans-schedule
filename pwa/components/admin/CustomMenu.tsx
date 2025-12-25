@@ -57,6 +57,18 @@ export const CustomMenu = () => {
         primaryText="График на смени"
         leftIcon={<ScheduleIcon />}
       />
+
+      <MenuItemLink
+        to="/order_patterns"
+        primaryText="Порядъци"
+        leftIcon={<ScheduleIcon />}
+      />
+
+      <MenuItemLink
+        to="/order_pattern_details"
+        primaryText="Детайли на Порядък"
+        leftIcon={<ScheduleIcon />}
+      />
     </Menu>
   );
 };

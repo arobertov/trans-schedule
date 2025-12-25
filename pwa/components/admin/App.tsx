@@ -22,6 +22,16 @@ import { PositionsList } from "./positions/PositionList";
 import { PositionsShow } from "./positions/PositionShow";
 import { CustomLayout } from "./CustomLayout";
 import i18nProvider from "./i18n";
+import {
+  PatternList,
+  PatternCreate,
+  PatternEdit,
+  PatternShow,
+  PatternDetailList,
+  PatternDetailCreate,
+  PatternDetailEdit,
+  PatternBulkImport,
+} from "./patterns";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -29,7 +39,7 @@ const AnyHydraAdmin: any = HydraAdmin;
 const authenticatedFetchHydra = (url: any, options: any = {}) => {
   const token = getToken();
   console.log('authenticatedFetchHydra called:', url.toString(), 'hasToken:', !!token);
-  
+
   // Проверка дали токенът е изтекъл
   if (token) {
     try {
@@ -44,12 +54,12 @@ const authenticatedFetchHydra = (url: any, options: any = {}) => {
       console.error('Error parsing token in fetch:', error);
     }
   }
-  
+
   const headers = {
     ...options.headers,
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  
+
   return fetchHydra(url, { ...options, headers });
 };
 
@@ -76,10 +86,13 @@ const App = () => {
       <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
       <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />
       <ResourceGuesser name="shift_schedules" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />
-      
+      <ResourceGuesser name="order_patterns" list={PatternList} create={PatternCreate} edit={PatternEdit} show={PatternShow} />
+      <ResourceGuesser name="order_pattern_details" list={PatternDetailList} create={PatternDetailCreate} edit={PatternDetailEdit} />
+     
       <CustomRoutes>
         <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
         <Route path="/shifts/bulk-import" element={<ShiftsBulkImport />} />
+        <Route path="/patterns/bulk-import" element={<PatternBulkImport />} />
       </CustomRoutes>
     </AnyHydraAdmin>
   );

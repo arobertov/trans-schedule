@@ -33,12 +33,12 @@ export const Dashboard = () => {
       addPath: "/admin#/employees/create",
     },
     {
-      title: "Позиции",
-      description: "Преглед и управление на позиции",
+      title: "График на смените",
+      description: "Преглед и управление на графика на смените",
       icon: <WorkIcon sx={{ fontSize: 60 }} />,
       color: "#2e7d32",
-      viewPath: "/admin#/positions",
-      addPath: "/admin#/positions/create",
+      viewPath: "/admin#/shift_schedules",
+      addPath: "/admin#/shift_schedules/create",
     },
     {
       title: "Потребители",
