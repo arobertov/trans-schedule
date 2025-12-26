@@ -23,7 +23,7 @@ export const PatternCreate = () => (
             label="№" 
             min={1} 
             isRequired 
-            sx={{ width: 100 }}
+            sx={{ width: 130 }}
           />
           <TextInput 
             source="column_name" 

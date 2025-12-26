@@ -6,3 +6,4 @@ export * from "./PatternDetailList";
 export * from "./PatternDetailCreate";
 export * from "./PatternDetailEdit";
 export * from "./PatternBulkImport";
+export * from "./PatternDetailGrid";

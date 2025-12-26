@@ -45,15 +45,14 @@ class OrderPatternDetails
 
     #[ORM\Column(type: 'integer')]
     #[Assert\GreaterThan(value: 0, message: 'Номерът на позицията трябва да е положително число')]
-    #[ApiProperty(description: 'Номер на позицията (ред в матрицата)', example: 1)]
+    #[ApiProperty(description: 'Номер на позицията ', example: 1)]
     #[Groups(['pattern_detail:read', 'pattern_detail:write', 'pattern:read'])]
     private ?int $position_number = null;
 
-    #[ORM\Column(type: 'json')]
-    #[Assert\NotNull(message: 'Стойностите са задължителни')]
+    #[ORM\Column(type: 'json', name: '`values`')]
     #[ApiProperty(
-        description: 'JSON обект със стойности за всяка колона',
-        example: '{"делничен_ден": "ПЖМ", "почивен_ден": "О", "празник": "Б"}'
+        description: 'JSON обект със стойности за всяка колона (може да съдържа празни стойности)',
+        example: '{"СМ1-Д": "МД-Н", "СМ1-Н": "МД-Д", "СМ2-Д": "", "СМ2-Н": ""}'
     )]
     #[Groups(['pattern_detail:read', 'pattern_detail:write', 'pattern:read'])]
     private array $values = [];

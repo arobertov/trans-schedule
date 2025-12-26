@@ -148,7 +148,7 @@ const bgMessages: TranslationMessages = {
             },
         },
         positions: {
-            name: 'Позиция |||| Позиции',
+            name: 'Длъжност |||| Длъжности',
             fields: {
                 name: 'Наименование',
                 description: 'Описание',
@@ -172,6 +172,26 @@ const bgMessages: TranslationMessages = {
                 shift_date: 'Дата',
                 shift_type: 'Тип смяна',
                 notes: 'Бележки',
+                created_at: 'Създаден на',
+                updated_at: 'Обновен на',
+            },
+        },
+        order_patterns: {
+            name: 'Порядък |||| Порядъци',
+            fields: {
+                name: 'Наименование',
+                description: 'Описание',
+                totalDays: 'Общо дни',
+                created_at: 'Създаден на',
+                updated_at: 'Обновен на',
+            },
+        },
+        order_pattern_details: {
+            name: 'Детайли на порядък |||| Детайли на порядъци',
+            fields: {
+                pattern: 'Порядък',
+                dayNumber: 'Номер на ден',
+                shiftType: 'Тип смяна',
                 created_at: 'Създаден на',
                 updated_at: 'Обновен на',
             },
