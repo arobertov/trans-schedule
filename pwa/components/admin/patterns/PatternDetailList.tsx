@@ -5,13 +5,12 @@ import {
   NumberField,
   TextField,
   FunctionField,
-  EditButton,
-  DeleteButton,
   TopToolbar,
   CreateButton,
   Button,
   useListContext,
   Loading,
+  useDataProvider,
 } from "react-admin";
 import { Link } from 'react-router-dom';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -26,7 +25,7 @@ const ViewModeContext = createContext<{
   setViewMode: (mode: 'table' | 'grid') => void;
 }>({
   viewMode: 'grid',
-  setViewMode: () => {},
+  setViewMode: () => { },
 });
 
 const ListActions = () => {
@@ -94,36 +93,39 @@ const Empty = () => (
 const DetailListContent = () => {
   const { data, isLoading } = useListContext();
   const { viewMode } = useContext(ViewModeContext);
+  const dataProvider = useDataProvider();
   const [columns, setColumns] = useState<any[]>([]);
+  const [patternId, setPatternId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    console.log('Trriger use efect. List data changed:', data);
+    console.log('DetailListContent useEffect triggered with data:', data);
     // Fetch pattern columns when data is available
     if (data && data.length > 0) {
       const firstItem = data[0];
-      console.log('First item :', firstItem.originId);
-      if (firstItem && firstItem.originId) {
-        let patternId: string | undefined;
-        if (typeof firstItem.originId === 'string') {
-          patternId = firstItem.originId;
-        } 
-        
-        if (patternId) {
+      if (firstItem && firstItem.pattern) {
+        let currentId: string | undefined;
+        if (typeof firstItem.pattern === 'string') {
+          console.log('Pattern is a string:', firstItem.pattern);
+          currentId = firstItem.pattern;
+        } else if (firstItem.pattern['@id']) {
+          currentId = firstItem.pattern['@id'];     
+        }
+        console.log('Extracted patternId:', currentId);
+        if (currentId) {
+          setPatternId(currentId);
           // Fetch pattern to get columns
-          fetch(`${window.origin}/order_patterns/${patternId}`, {
-            headers: {
-              'Accept': 'application/ld+json',
-            },
-          })
-            .then(res => res.json())
-            .then(pattern => {
-              if (pattern.columns) {
+          dataProvider.getOne('order_patterns', { id: currentId })
+            .then(({ data: pattern }: { data: any }) => {
+              console.log('Fetched pattern:', pattern);
+              if (pattern && pattern.columns) {
                 setColumns(pattern.columns);
-              }
+              } else {
+                console.warn('Pattern has no columns:', pattern);
+              }       
 
               console.log('Fetched pattern columns:', pattern.columns);
             })
-            .catch(err => console.error('Error fetching pattern columns:', err));
+            .catch((err: any) => console.error('Error fetching pattern columns:', err));
         }
       }
     }
@@ -138,55 +140,34 @@ const DetailListContent = () => {
     return (
       <Datagrid>
         <NumberField source="position_number" label="Позиция" />
-        <TextField source="pattern.name" label="Порядък" />
-        {console.log('Rendering columns:', columns)}   
+        {console.log('Rendering columns:', columns)}
         {columns.map((col: any) => (
-          <FunctionField 
+          <FunctionField
             key={col.id}
             label={col.label}
             render={(record: any) => {
-              if (!record || !record.values) return '-';
-              return record.values[col.column_name] || '-';
+              if (!record || !record.values) return '';
+              return record.values[col.column_name] || '';
             }}
           />
         ))}
-        <EditButton />
-        <DeleteButton />
       </Datagrid>
     );
   }
 
   // If grid mode and we have data, show the grid
   if (viewMode === 'grid' && data && data.length > 0) {
-    const firstItem = data[0];
-    if (firstItem && firstItem.pattern) {
-      let patternId: string | undefined;
-      
-      if (typeof firstItem.pattern === 'string') {
-        // If it's a string like "/order_patterns/1"
-        patternId = firstItem.pattern.split('/').pop();
-      } else if (firstItem.pattern['@id']) {
-        // If it's an object with @id
-        patternId = firstItem.pattern['@id'].split('/').pop();
-      } else if (firstItem.pattern.id) {
-        // If it's an object with id
-        patternId = String(firstItem.pattern.id);
-      }
-      
-      if (patternId) {
-        return <PatternDetailGrid patternId={patternId} />;
-      }
+    if (patternId) {
+      return <PatternDetailGrid patternId={patternId} />;
     }
+    return <Loading />;
   }
 
   // Fallback to simple datagrid
   return (
     <Datagrid>
       <NumberField source="position_number" label="Позиция" />
-      <TextField source="pattern.name" label="Порядък" />
       <TextField source="values" label="Стойности (JSON)" />
-      <EditButton />
-      <DeleteButton />
     </Datagrid>
   );
 };
@@ -198,9 +179,11 @@ export const PatternDetailList = () => {
 
   return (
     <ViewModeContext.Provider value={{ viewMode, setViewMode }}>
-      <List 
-        actions={<ListActions />} 
+      <List
+        actions={<ListActions />}
         empty={<Empty />}
+        pagination={false} 
+        sort={{ field: 'position_number', order: 'ASC' }} 
       >
         <DetailListContent />
       </List>

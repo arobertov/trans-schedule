@@ -215,7 +215,7 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
     const newDetails = arrayMove(details, oldIndex, newIndex);
 
     // Update position numbers
-    const updatedDetails = newDetails.map((detail, index) => ({
+    const updatedDetails = newDetails.map((detail : any, index: number) => ({
       ...detail,
       position_number: index + 1,
     }));

@@ -19,6 +19,7 @@ use ApiPlatform\Metadata\ApiProperty;
     mercure: true,
     normalizationContext: ['groups' => ['pattern_detail:read']],
     denormalizationContext: ['groups' => ['pattern_detail:write']],
+    order: ['position_number' => 'ASC'],
     operations: [
         new GetCollection(paginationEnabled: false),
         new Post(),
@@ -40,7 +41,7 @@ class OrderPatternDetails
 
     #[ORM\ManyToOne(targetEntity: OrderPattern::class, inversedBy: 'details')]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
-    #[Groups(['pattern_detail:write'])]
+    #[Groups(['pattern_detail:read', 'pattern_detail:write'])]
     private ?OrderPattern $pattern = null;
 
     #[ORM\Column(type: 'integer')]
