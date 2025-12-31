@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, useMemo } from "react";
 import {
   List,
   Datagrid,
@@ -11,6 +11,7 @@ import {
   useListContext,
   Loading,
   useDataProvider,
+  useGetOne,
 } from "react-admin";
 import { Link } from 'react-router-dom';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -91,48 +92,25 @@ const Empty = () => (
 );
 
 const DetailListContent = () => {
-  const { data, isLoading } = useListContext();
+  const { data : listData, isLoading : listLoading } = useListContext();
   const { viewMode } = useContext(ViewModeContext);
   const dataProvider = useDataProvider();
-  const [columns, setColumns] = useState<any[]>([]);
-  const [patternId, setPatternId] = useState<string | undefined>(undefined);
+  const patternId = listData?.[0]?.pattern?.['@id'] || listData?.[0]?.pattern;
+  const idOnly = typeof patternId === 'string' ? patternId : undefined;
 
-  useEffect(() => {
-    console.log('DetailListContent useEffect triggered with data:', data);
-    // Fetch pattern columns when data is available
-    if (data && data.length > 0) {
-      const firstItem = data[0];
-      if (firstItem && firstItem.pattern) {
-        let currentId: string | undefined;
-        if (typeof firstItem.pattern === 'string') {
-          console.log('Pattern is a string:', firstItem.pattern);
-          currentId = firstItem.pattern;
-        } else if (firstItem.pattern['@id']) {
-          currentId = firstItem.pattern['@id'];     
-        }
-        console.log('Extracted patternId:', currentId);
-        if (currentId) {
-          setPatternId(currentId);
-          // Fetch pattern to get columns
-          dataProvider.getOne('order_patterns', { id: currentId })
-            .then(({ data: pattern }: { data: any }) => {
-              console.log('Fetched pattern:', pattern);
-              if (pattern && pattern.columns) {
-                setColumns(pattern.columns);
-              } else {
-                console.warn('Pattern has no columns:', pattern);
-              }       
+  // Fetch pattern columns when data is available
+  const { data: pattern, isLoading: patternLoading } = useGetOne(
+    'order_patterns',
+    { id: idOnly },
+  )
 
-              console.log('Fetched pattern columns:', pattern.columns);
-            })
-            .catch((err: any) => console.error('Error fetching pattern columns:', err));
-        }
-      }
-    }
-  }, [data]);
+  const columns = useMemo(() => {
+    if (!pattern?.columns) return [];
+    return [...pattern.columns].sort((a, b) => (a.column_number || 0) - (b.column_number || 0));
+  }, [pattern]);
 
-  if (isLoading) {
-    return <Loading />;
+  if (listLoading || patternLoading) {
+    return <Loading />; 
   }
 
   // If table mode, show simple list with dynamic columns
@@ -156,7 +134,7 @@ const DetailListContent = () => {
   }
 
   // If grid mode and we have data, show the grid
-  if (viewMode === 'grid' && data && data.length > 0) {
+  if (viewMode === 'grid' && listData && listData.length > 0) {
     if (patternId) {
       return <PatternDetailGrid patternId={patternId} />;
     }
@@ -182,8 +160,8 @@ export const PatternDetailList = () => {
       <List
         actions={<ListActions />}
         empty={<Empty />}
-        pagination={false} 
-        sort={{ field: 'position_number', order: 'ASC' }} 
+        pagination={false}
+        sort={{ field: 'position_number', order: 'ASC' }}
       >
         <DetailListContent />
       </List>
