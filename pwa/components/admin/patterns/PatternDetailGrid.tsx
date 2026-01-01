@@ -33,7 +33,6 @@ import {
   TableRow,
   Paper,
   TextField,
-  Autocomplete,
   IconButton,
   Typography,
   Chip,
@@ -78,51 +77,21 @@ const SortableRow = ({
       <TableCell sx={{ width: 80, fontWeight: "bold" }}>{row.position_number}</TableCell>
       {columns.map((col) => (
         <TableCell key={col.id} sx={{ minWidth: 120, p: 0.5 }}>
-          <Autocomplete
-            freeSolo
-            options={[
-              "СМ1-Д",
-              "СМ2-Д",
-              "СМ10-Д",
-              "СМ12-Д",
-              "СМ4-Д",
-              "СМ12-Н",
-              "СМ10-Н",
-              "СМ13-С",
-              "СМ9-С",
-              "РМСН-18",
-              "РМСС-18",
-              "РМСН 3-14",
-              "РМД-С 1",
-              "РМД-С 2",
-              "РМД-Н 2",
-              "ТРН-18",
-              "О",
-              "Б",
-            ]}
+          <TextField
+            fullWidth
+            variant="standard"
+            size="small"
             value={row.values[col.column_name] || ""}
-            onChange={(event, newValue) => {
-              onCellChange(row.id, col.column_name, newValue || "");
+            onChange={(e) => {
+              onCellChange(row.id, col.column_name, e.target.value);
             }}
-            onInputChange={(event, newValue) => {
-              if (event?.type === "change") {
-                onCellChange(row.id, col.column_name, newValue);
-              }
+            sx={{
+              "& .MuiInput-root": {
+                fontSize: "0.875rem",
+                "&:before": { borderBottom: "none" },
+                "&:hover:before": { borderBottom: "1px solid rgba(0, 0, 0, 0.42)" },
+              },
             }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                variant="standard"
-                size="small"
-                sx={{
-                  "& .MuiInput-root": {
-                    fontSize: "0.875rem",
-                    "&:before": { borderBottom: "none" },
-                    "&:hover:before": { borderBottom: "1px solid rgba(0, 0, 0, 0.42)" },
-                  },
-                }}
-              />
-            )}
           />
         </TableCell>
       ))}
