@@ -13,7 +13,7 @@ const ListActions = () => (
             component={Link}
             to="/shifts/bulk-import"
             label="Масов импорт"
-            startIcon={<UploadIcon />}
+            icon={<UploadIcon />}
         />
     </TopToolbar>
 );
@@ -61,7 +61,7 @@ const Empty = () => (
                 component={Link}
                 to="/shifts/bulk-import"
                 label="Масов импорт от Excel"
-                startIcon={<UploadIcon />}
+                icon={<UploadIcon />}
                 variant="contained"
             />
         </Box>

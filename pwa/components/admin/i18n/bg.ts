@@ -130,6 +130,27 @@ const bgMessages: TranslationMessages = {
             oneOf: 'Трябва да е една от: %{options}',
             regex: 'Трябва да съответства на определен формат (regexp): %{pattern}',
         },
+        configurable: {
+            customize: 'Персонализирай',
+            configureMode: 'Конфигурирай тази страница',
+            inspector: {
+                title: 'Инспектор',
+                content: 'Задръжте мишката над елементите на потребителския интерфейс, за да ги конфигурирате',
+                reset: 'Нулиране на настройките',
+                hideAll: 'Скрий всички',
+                showAll: 'Покажи всички',
+            },
+            Datagrid: {
+                title: 'Таблица с данни',
+                unlabeled: 'Колона без етикет #%{column}',
+            },
+            SimpleList: {
+                title: 'Списък',
+                primaryText: 'Основен текст',
+                secondaryText: 'Втори текст',
+                tertiaryText: 'Трети текст',
+            },
+        },
     },
     resources: {
         employees: {

@@ -21,7 +21,7 @@ const ListActions = () => (
             component={Link}
             to="/employees/bulk-import"
             label="Масов импорт"
-            startIcon={<UploadFileIcon />}
+            icon={<UploadFileIcon />}
         />
     </TopToolbar>
 );
@@ -46,7 +46,7 @@ const Empty = () => (
                 component={Link}
                 to="/employees/bulk-import"
                 label="Масов импорт"
-                startIcon={<UploadFileIcon />}
+                icon={<UploadFileIcon />}
             />
         </Box>
     </Box>
