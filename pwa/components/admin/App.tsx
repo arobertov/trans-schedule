@@ -1,6 +1,6 @@
 import * as React from "react";
 import { HydraAdmin, ResourceGuesser, hydraDataProvider, fetchHydra } from "@api-platform/admin";
-import { CustomRoutes } from 'react-admin';
+import { CustomRoutes, Resource } from 'react-admin';
 import { Route } from 'react-router-dom';
 import { getToken } from "../../jwt-frontend-auth/src/auth/authService";
 import authProvider from "./authProvider";
@@ -88,7 +88,7 @@ const App = () => {
       <ResourceGuesser name="shift_schedules" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />
       <ResourceGuesser name="order_patterns" list={PatternList} create={PatternCreate} edit={PatternEdit} show={PatternShow} />
       <ResourceGuesser name="order_pattern_details" list={PatternDetailList} create={PatternDetailCreate} edit={PatternDetailEdit} />
-     
+
       <CustomRoutes>
         <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
         <Route path="/shifts/bulk-import" element={<ShiftsBulkImport />} />

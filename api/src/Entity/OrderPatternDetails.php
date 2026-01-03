@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use ApiPlatform\Metadata\ApiProperty;
+use App\State\OrderPatternDetailsStateProcessor;
 
 #[ApiResource(
     description: 'Детайли на порядък - стойности за всяка позиция',
@@ -20,6 +21,7 @@ use ApiPlatform\Metadata\ApiProperty;
     normalizationContext: ['groups' => ['pattern_detail:read']],
     denormalizationContext: ['groups' => ['pattern_detail:write']],
     order: ['position_number' => 'ASC'],
+    processor: OrderPatternDetailsStateProcessor::class,
     operations: [
         new GetCollection(paginationEnabled: false),
         new Post(),

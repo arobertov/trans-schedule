@@ -33,7 +33,7 @@ export const CustomMenu = () => {
         primaryText="Табло за управление"
         leftIcon={<DashboardIcon />}
       />
-      
+
       <MenuItemLink
         to="/employees"
         primaryText="Служители"

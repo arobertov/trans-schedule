@@ -1,0 +1,1 @@
+SELECT * FROM `api`.`order_pattern_details` ORDER BY `position_number` ASC LIMIT 1000;

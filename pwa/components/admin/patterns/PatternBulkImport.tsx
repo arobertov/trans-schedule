@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState, useEffect } from "react";
 import {
   useGetOne,
-  useCreate,
   SaveButton,
   SimpleForm,
   ReferenceInput,
@@ -25,11 +24,17 @@ import {
   Paper,
   Chip,
   Box,
+  LinearProgress,
+  CircularProgress
 } from "@mui/material";
-import { getToken } from "../../../jwt-frontend-auth/src/auth/authService";
 
 const BulkImportForm = () => {
   console.log("===== BulkImportForm component rendered =====");
+  
+  const dataProvider = useDataProvider();
+  const notify = useNotify();
+  const redirect = useRedirect();
+  // const [create, { isLoading }] = useCreate();
   
   const [patternId, setPatternId] = useState<string | undefined>();
   const [text, setText] = useState("");
@@ -38,69 +43,41 @@ const BulkImportForm = () => {
   const [pattern, setPattern] = useState<any>(null);
   const [patternLoading, setPatternLoading] = useState(false);
   const [showAllRows, setShowAllRows] = useState(false);
-  const [createMany, { isLoading }] = useCreate();
-  const notify = useNotify();
-  const redirect = useRedirect();
+  const [progress, setProgress] = useState(0);
+  const [isImporting, setIsImporting] = useState(false);
 
   console.log("Current patternId:", patternId);
   console.log("Current pattern:", pattern);
 
   // Fetch pattern with columns
   useEffect(() => {
-    console.log("===== useEffect START =====");
-    console.log("useEffect triggered, patternId:", patternId);
-    
     // Clear data when pattern changes
     setPreviewData([]);
     setErrors([]);
     setText("");
     
     if (!patternId) {
-      console.log("No patternId, clearing pattern");
       setPattern(null);
       return;
     }
-
-    console.log("About to fetch pattern with id:", patternId);
     setPatternLoading(true);
     
     const fetchPattern = async () => {
+
       try {
-        console.log("Fetching from API...");
-        const token = getToken();
-        console.log("Token exists:", !!token);
-        
-        // Extract numeric ID if it's a URL
-        const numericId = typeof patternId === 'string' && patternId.includes('/') 
-          ? patternId.split('/').pop() 
-          : patternId;
-        
-        console.log("Fetching pattern with numeric ID:", numericId);
-        
-        const response = await fetch(`${window.origin}/order_patterns/${numericId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/ld+json',
-          },
-        });
-        
-        console.log("Response received:", response.status);
-        const data = await response.json();
-        console.log("===== Pattern fetched successfully =====");
-        console.log("Full data:", data);
-        console.log("Columns count:", data.columns?.length);
-        
+        const { data } = await dataProvider.getOne('order_patterns', { id: patternId });
         setPattern(data);
-        setPatternLoading(false);
-      } catch (error) {
-        console.error("===== Error fetching pattern =====");
-        console.error("Error:", error);
+      } catch (err: any) {
+        notify('Грешка при зареждане на порядъка', { type: 'error' });
+        console.error('Error loading pattern:', err);
+      } finally {
         setPatternLoading(false);
       }
+     
     };
     
     fetchPattern();
-  }, [patternId]);
+  }, [patternId, dataProvider, notify]);
 
   const columns = Array.isArray(pattern?.columns) ? pattern.columns : [];
   const columnCount = columns.length;
@@ -108,35 +85,22 @@ const BulkImportForm = () => {
   console.log("Columns array:", columns);
   console.log("Column count:", columnCount);
 
-  // Генериране на пример за въвеждане
-  const exampleText = useMemo(() => {
-    if (!columns.length) return "";
-    // Header ред с имената на колоните
-    const headerRow = columns.map((col: any) => col.column_name).join("\t");
-    // Примерни редове с данни
-    const exampleRow1 = columns.map(() => "СМ1-Д").join("\t");
-    const exampleRow2 = columns.map(() => "СМ2-Н").join("\t");
-    const exampleRow3 = columns.map(() => "О").join("\t");
-    return `${headerRow}\n${exampleRow1}\n${exampleRow2}\n${exampleRow3}`;
-  }, [columns]);
 
   // Валидация и преглед на данните
-  const handlePreview = useCallback(() => {
+  const parseData = useCallback((inputText: string) => {
     setErrors([]);
     setPreviewData([]);
 
     if (!patternId) {
-      setErrors(["Моля, изберете порядък"]);
       return;
     }
 
-    if (!text.trim()) {
-      setErrors(["Моля, въведете данни за импорт"]);
+    if (!inputText.trim()) {
       return;
     }
 
     // Разделяме по нови редове, запазваме всички редове (включително празни)
-    const lines = text.split("\n");
+    const lines = inputText.split("\n");
     const rows = lines.map((line) => {
       // Split по TAB, запазваме празните стойности
       const cols = line.split("\t");
@@ -180,7 +144,7 @@ const BulkImportForm = () => {
 
     setErrors(newErrors);
     setPreviewData(preview);
-  }, [patternId, text, columns, columnCount]);
+  }, [patternId, columns, columnCount]);
 
   // Импорт на данните
   const handleImport = useCallback(async () => {
@@ -188,6 +152,10 @@ const BulkImportForm = () => {
       notify("Моля, коригирайте грешките преди импорт", { type: "error" });
       return;
     }
+
+    setIsImporting(true);
+    setProgress(0);
+    const importErrors: string[] = [];
 
     try {
       // Extract numeric ID if patternId is IRI format
@@ -201,20 +169,41 @@ const BulkImportForm = () => {
         values: item.values,
       }));
 
-      await Promise.all(payload.map((item) => createMany("order_pattern_details", { data: item })));
+      let successCount = 0;
+      for (let i = 0; i < payload.length; i++) {
+        try {
+            await dataProvider.create("order_pattern_details", { data: payload[i] });
+            successCount++;
+        } catch (err: any) {
+            console.error(`Error importing row ${i + 1}`, err);
+            const errorMsg = err?.body?.['hydra:description'] || err?.message || 'Неизвестна грешка';
+            importErrors.push(`Ред ${i + 1}: ${errorMsg}`);
+        }
+        setProgress(Math.round(((i + 1) / payload.length) * 100));
+        // Allow UI update
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
       
-      notify(`Успешно импортирани ${payload.length} реда`, { type: "success" });
-      setText("");
-      setPreviewData([]);
-      
-      // Пренасочване към списъка с детайли след кратка пауза
-      setTimeout(() => {
-        redirect('/order_pattern_details');
-      }, 1000);
+      if (importErrors.length > 0) {
+        setErrors(importErrors);
+        notify(`Импортирани ${successCount} от ${payload.length} реда. Има грешки!`, { type: "warning" });
+      } else {
+        notify(`Успешно импортирани ${successCount} от ${payload.length} реда`, { type: "success" });
+        setText("");
+        setPreviewData([]);
+        
+        // Пренасочване към списъка с детайли след кратка пауза
+        setTimeout(() => {
+          redirect('/order_pattern_details');
+        }, 1000);
+      }
+
     } catch (error: any) {
       notify(`Грешка при импорт: ${error.message}`, { type: "error" });
+    } finally {
+        setIsImporting(false);
     }
-  }, [patternId, columns, previewData, errors, createMany, notify, redirect]);
+  }, [patternId, columns, previewData, errors, dataProvider, notify, redirect]);
 
   return (
     <>
@@ -237,9 +226,12 @@ const BulkImportForm = () => {
         </ReferenceInput>
 
         {patternLoading && (
-          <Typography variant="body2" color="textSecondary">
-            Зареждане на данни за порядъка...
-          </Typography>
+          <Box display="flex" alignItems="center" gap={1}>
+            <CircularProgress size={20} />
+            <Typography variant="body2" color="textSecondary">
+              Зареждане на данни за порядъка...
+            </Typography>
+          </Box>
         )}
 
         {patternId && !patternLoading && columns.length === 0 && (
@@ -262,28 +254,6 @@ const BulkImportForm = () => {
           </Alert>
         )}
 
-        {columns.length > 0 && (
-          <Box>
-            <Typography variant="body2" color="textSecondary" mb={1}>
-              Пример за въвеждане (копирайте от Excel с TAB разделител):
-            </Typography>
-            <Paper variant="outlined" sx={{ p: 2, bgcolor: "grey.100" }}>
-              <Typography 
-                variant="body2" 
-                fontFamily="monospace" 
-                whiteSpace="pre"
-                sx={{ color: "text.primary" }}
-              >
-                {exampleText}
-              </Typography>
-            </Paper>
-            <Typography variant="caption" color="textSecondary" mt={1} display="block">
-              Първият ред съдържа имената на колоните, следващите редове съдържат данните.
-              Празните клетки се копират като празни стойности.
-            </Typography>
-          </Box>
-        )}
-
         <TextInput
           source="data"
           label="Постави таблица (редове, разделени с TAB)"
@@ -292,28 +262,30 @@ const BulkImportForm = () => {
           minRows={6}
           value={text}
           onChange={(e) => {
-            setText(e.target.value);
-            setPreviewData([]);
-            setErrors([]);
+            const newVal = e.target.value;
+            setText(newVal);
+            parseData(newVal);
           }}
           helperText="Копирайте директно от Excel или друга таблица"
+          disabled={isImporting}
         />
+
+        {isImporting && (
+          <Box sx={{ width: '100%', mb: 2 }}>
+            <LinearProgress variant="determinate" value={progress} />
+            <Typography variant="body2" color="textSecondary" align="center">
+              Импортиране... {progress}%
+            </Typography>
+          </Box>
+        )}
 
         <Box display="flex" gap={2}>
           <Button 
-            variant="outlined" 
-            onClick={handlePreview} 
-            disabled={!patternId || !text.trim()}
-          >
-            Преглед на данните
-          </Button>
-          
-          <Button 
             variant="contained" 
             onClick={handleImport} 
-            disabled={isLoading || !patternId || previewData.length === 0 || errors.length > 0}
+            disabled={isImporting || !patternId || previewData.length === 0 || errors.length > 0}
           >
-            {isLoading ? "Импортиране..." : `Импортирай ${previewData.length} реда`}
+            {isImporting ? "Импортиране..." : `Импортирай ${previewData.length} реда`}
           </Button>
         </Box>
 

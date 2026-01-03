@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, memo, ChangeEvent } from "react";
+import React, { useState, useEffect, useCallback, memo, ChangeEvent } from "react";
 import {
   useDataProvider,
   useNotify,
   useGetOne,
   useUpdate,
-  useRefresh,
   Loading,
 } from "react-admin";
 import {
@@ -32,69 +31,35 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Typography,
   Chip,
+  useTheme,
 } from "@mui/material";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 
-interface PatternDetailGridProps {
-  patternId: string;
-}
-
+// Добави липсващите типове и интерфейси
 interface DetailRow {
   id: number;
-  "@id"?: string; // API Platform IRI
+  "@id"?: string;
   position_number: number;
   values: Record<string, string>;
-  pattern?: string | { "@id"?: string } | null;
-  [key: string]: unknown;
+  pattern?: string;
 }
 
+interface PatternDetailGridProps {
+  patternId: string | number;
+  onOrderChange?: () => void;
+}
+
+// Добави липсващата helper функция
 const resolvePatternIri = (
   detail: DetailRow,
-  patternResource: unknown,
-  fallbackPatternId: string
+  pattern: any,
+  patternId: string | number
 ): string => {
-  const detailPattern = detail.pattern;
-
-  if (typeof detailPattern === "string" && detailPattern.length > 0) {
-    return detailPattern;
-  }
-
-  if (
-    detailPattern &&
-    typeof detailPattern === "object" &&
-    "@id" in detailPattern &&
-    typeof detailPattern["@id"] === "string" &&
-    detailPattern["@id"]
-  ) {
-    return detailPattern["@id"] as string;
-  }
-
-  if (typeof patternResource === "string" && patternResource.length > 0) {
-    return patternResource;
-  }
-
-  if (
-    patternResource &&
-    typeof patternResource === "object" &&
-    "@id" in (patternResource as Record<string, unknown>) &&
-    typeof (patternResource as Record<string, unknown>)["@id"] === "string"
-  ) {
-    return (patternResource as Record<string, unknown>)["@id"] as string;
-  }
-
-  if (
-    patternResource &&
-    typeof patternResource === "object" &&
-    "id" in (patternResource as Record<string, unknown>) &&
-    (patternResource as Record<string, unknown>)["id"]
-  ) {
-    return `/order_patterns/${(patternResource as Record<string, unknown>)["id"]}`;
-  }
-
-  return `/order_patterns/${fallbackPatternId}`;
+  if (detail.pattern) return detail.pattern;
+  if (pattern?.["@id"]) return pattern["@id"];
+  return `/api/order_patterns/${patternId}`;
 };
 
 const SortableRow = memo(({
@@ -106,15 +71,20 @@ const SortableRow = memo(({
   columns: any[];
   onCellChange: (rowId: number, columnName: string, value: string) => void;
 }) => {
+  const theme = useTheme();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: row["@id"] || String(row.id),
   });
+
+  const isDarkMode = theme.palette.mode === 'dark';
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    backgroundColor: isDragging ? "#f5f5f5" : "white",
+    backgroundColor: isDragging 
+      ? (isDarkMode ? theme.palette.grey[800] : "#f5f5f5")
+      : (isDarkMode ? theme.palette.background.paper : "white"),
   };
 
   return (
@@ -122,7 +92,7 @@ const SortableRow = memo(({
       ref={setNodeRef}
       style={{
         ...style,
-        pointerEvents: isDragging ? "none" : "auto", // Allow hit-testing other rows while dragging
+        pointerEvents: isDragging ? "none" : "auto",
       }}
     >
       <TableCell
@@ -137,7 +107,9 @@ const SortableRow = memo(({
       >
         <DragIndicatorIcon color="action" />
       </TableCell>
-      <TableCell sx={{ width: 80, fontWeight: "bold" }}>{row.position_number}</TableCell>
+      <TableCell sx={{ width: 80, fontWeight: "bold", color: theme.palette.text.primary }}>
+        {row.position_number}
+      </TableCell>
       {columns.map((col) => (
         <TableCell key={col.id} sx={{ minWidth: 120, p: 0.5 }}>
           <input
@@ -149,13 +121,15 @@ const SortableRow = memo(({
             style={{
               width: "100%",
               padding: "4px 8px",
-              border: "1px solid #e0e0e0",
+              border: `1px solid ${isDarkMode ? theme.palette.grey[700] : "#e0e0e0"}`,
               borderRadius: "4px",
               fontSize: "0.875rem",
               outline: "none",
+              backgroundColor: isDarkMode ? theme.palette.grey[900] : "white",
+              color: theme.palette.text.primary,
             }}
-            onFocus={(e) => (e.target.style.borderColor = "#1976d2")}
-            onBlur={(e) => (e.target.style.borderColor = "#e0e0e0")}
+            onFocus={(e) => (e.target.style.borderColor = theme.palette.primary.main)}
+            onBlur={(e) => (e.target.style.borderColor = isDarkMode ? theme.palette.grey[700] : "#e0e0e0")}
           />
         </TableCell>
       ))}
@@ -165,12 +139,14 @@ const SortableRow = memo(({
 
 SortableRow.displayName = "SortableRow";
 
-export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
+// Поправен export - премахнато "DragTableExample", използва PatternDetailGrid
+export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGridProps) => {
+  const theme = useTheme();
   const [details, setDetails] = useState<DetailRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
   const dataProvider = useDataProvider();
   const notify = useNotify();
-  const refresh = useRefresh();
   const [update] = useUpdate();
 
   const { data: pattern, isLoading: patternLoading } = useGetOne("order_patterns", {
@@ -180,10 +156,10 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
   const columns = pattern?.columns || [];
 
   const fetchDetails = useCallback(async () => {
-    if (!patternId) return;
+    if (!patternId || isDragging) return;
 
     try {
-      setLoading(true);
+      if (details.length === 0) setLoading(true);
       const { data } = await dataProvider.getList("order_pattern_details", {
         pagination: { page: 1, perPage: 1000 },
         sort: { field: "position_number", order: "ASC" },
@@ -196,7 +172,7 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
     } finally {
       setLoading(false);
     }
-  }, [patternId, dataProvider, notify]);
+  }, [patternId, dataProvider, notify, isDragging, details.length]);
 
   useEffect(() => {
     fetchDetails();
@@ -209,12 +185,12 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
 
       const newValues = { ...row.values, [columnName]: value };
 
+      // Оптимистична актуализация
       setDetails((prev) =>
         prev.map((d) => (d.id === rowId ? { ...d, values: newValues } : d))
       );
 
       try {
-        // Build full payload so API keeps pattern reference in sync with edited value
         const payload = {
           ...row,
           values: newValues,
@@ -225,15 +201,13 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
           id: (row["@id"] as string | undefined) ?? rowId,
           data: payload,
           previousData: row,
-        });
-
-        refresh();
+        }, { mutationMode: "pessimistic" });
       } catch (error: any) {
         notify(`Грешка при запис: ${error.message}`, { type: "error" });
         setDetails((prev) => prev.map((d) => (d.id === rowId ? row : d)));
       }
     },
-    [details, update, notify, pattern, patternId, refresh]
+    [details, update, notify, pattern, patternId]
   );
 
   const sensors = useSensors(
@@ -247,20 +221,17 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
     })
   );
 
-  const handleDragStart = (event: any) => {
-    console.log("DragStart event:", { activeId: event.active.id });
-  };
-
-  const handleDragOver = (event: any) => {
-    console.log("DragOver event:", { activeId: event.active.id, overId: event.over?.id });
+  const handleDragStart = () => {
+    setIsDragging(true);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
-    console.log("DragEnd event:", { activeId: active.id, overId: over?.id });
-
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id) {
+      setIsDragging(false);
+      return;
+    }
 
     const oldIndex = details.findIndex(
       (d) => (d["@id"] && d["@id"] === active.id) || String(d.id) === active.id
@@ -269,16 +240,13 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
       (d) => (d["@id"] && d["@id"] === over.id) || String(d.id) === over.id
     );
 
-    console.log("Drag indices:", { oldIndex, newIndex });
-
     if (oldIndex === -1 || newIndex === -1) {
-      console.error("Invalid indices:", { oldIndex, newIndex });
+      setIsDragging(false);
       return;
     }
 
-    // Reorder the in-memory list and normalize displayed positions 1..N
+    // 1. Оптимистично обновяване на UI (локално)
     const reordered = arrayMove(details, oldIndex, newIndex);
-
     const updatedDetails = reordered.map((detail, index: number) => ({
       ...detail,
       position_number: index + 1,
@@ -286,67 +254,39 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
 
     setDetails(updatedDetails);
 
+    // 2. Изпращане на заявка към API
+    // Тъй като вече имаме StateProcessor на бекенда, е нужно да обновим само
+    // елемента, който е преместен. Бекендът автоматично ще пренареди останалите.
+    const movedItem = details[oldIndex];
+    const newPosition = newIndex + 1;
+
     try {
-      // Determine which rows actually changed position_number
-      const changed = updatedDetails
-        .map((detail) => ({
-          detail,
-          previous: details.find((orig) => orig.id === detail.id),
-        }))
-        .filter(
-          (entry): entry is { detail: DetailRow; previous: DetailRow } =>
-            !!entry.previous && entry.previous.position_number !== entry.detail.position_number
-        );
-
-      if (changed.length === 0) {
-        return;
-      }
-
-      // Stage updates using temporary positions to avoid unique constraint collisions
-      const total = updatedDetails.length;
-      const stagedById = new Map<number, DetailRow>();
-
-      for (const { detail, previous } of changed) {
-        const tempPosition = detail.position_number + total;
-        const patternIri = resolvePatternIri(detail, pattern, patternId);
-        const payload = {
-          ...previous,
-          position_number: tempPosition,
-          pattern: patternIri,
-        } as DetailRow;
-
-        stagedById.set(detail.id, payload);
-
-        await update("order_pattern_details", {
-          id: (detail["@id"] as string | undefined) ?? detail.id,
-          data: payload,
-          previousData: previous,
-        });
-      }
-
-      // Finalize each row with its true position once staging is persisted
-      for (const { detail } of changed) {
-        const staged = stagedById.get(detail.id);
-        if (!staged) continue;
-
-        const finalPayload = {
-          ...staged,
-          position_number: detail.position_number,
-        };
-
-        await update("order_pattern_details", {
-          id: (detail["@id"] as string | undefined) ?? detail.id,
-          data: finalPayload,
-          previousData: staged,
-        });
-      }
-
-      notify("Позициите са преподредени успешно", { type: "success" });
-      refresh();
-      await fetchDetails();
+      const patternIri = resolvePatternIri(movedItem, pattern, patternId);
+      
+      // Изпращаме само новата позиция на преместения елемент
+      await update("order_pattern_details", {
+        id: (movedItem["@id"] as string | undefined) ?? movedItem.id,
+        data: { 
+            ...movedItem, 
+            position_number: newPosition,
+            pattern: patternIri 
+        },
+        previousData: movedItem,
+      }, { 
+        mutationMode: "pessimistic" ,
+        onSuccess: () => {
+          notify("Позициите са обновени", { type: "success" });
+          setIsDragging(false);
+          if (onOrderChange) {
+            onOrderChange();
+          }
+        }
+      });
+      
     } catch (error: any) {
-      notify(`Грешка при преподреждане: ${error.message}`, { type: "error" });
-      setDetails(details);
+      notify(`Грешка при запис: ${error.message}`, { type: "error" });
+      setDetails(details); // Връщане на старото състояние при грешка
+      setIsDragging(false);
     }
   };
 
@@ -381,21 +321,22 @@ export const PatternDetailGrid = ({ patternId }: PatternDetailGridProps) => {
         sensors={sensors}
         collisionDetection={rectIntersection}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <SortableContext
           items={details.map((d) => d["@id"] || String(d.id))}
           strategy={rectSortingStrategy}
         >
-          <TableContainer component={Paper} sx={{ maxHeight: "calc(100vh - 200px)" }}>
+          <TableContainer>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 50 }}></TableCell>
-                  <TableCell sx={{ width: 80, fontWeight: "bold" }}>Поз.</TableCell>
+                  <TableCell sx={{ width: 80, fontWeight: "bold", color: theme.palette.text.primary }}>
+                    Поз.
+                  </TableCell>
                   {columns.map((col: any) => (
-                    <TableCell key={col.id} sx={{ minWidth: 120 }}>
+                    <TableCell key={col.id} sx={{ minWidth: 120, color: theme.palette.text.primary }}>
                       <Box>
                         <Chip label={col.label} sx={{ mt: 0.5 }} />
                       </Box>

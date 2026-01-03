@@ -18,7 +18,8 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import { Box, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
-import { PatternDetailGrid } from './EditedPDGrid';
+//import { PatternDetailGrid } from './EditedPDGrid';
+import { PatternDetailGrid } from './PatternDetailGrid';
 
 // Create context for view mode
 const ViewModeContext = createContext<{
@@ -92,7 +93,7 @@ const Empty = () => (
 );
 
 const DetailListContent = () => {
-  const { data : listData, isLoading : listLoading } = useListContext();
+  const { data : listData, isLoading : listLoading, refetch } = useListContext();
   const { viewMode } = useContext(ViewModeContext);
   const dataProvider = useDataProvider();
   const patternId = listData?.[0]?.pattern?.['@id'] || listData?.[0]?.pattern;
@@ -136,7 +137,7 @@ const DetailListContent = () => {
   // If grid mode and we have data, show the grid
   if (viewMode === 'grid' && listData && listData.length > 0) {
     if (patternId) {
-      return <PatternDetailGrid patternId={patternId} />;
+      return <PatternDetailGrid patternId={patternId} onOrderChange={refetch} />;
     }
     return <Loading />;
   }
