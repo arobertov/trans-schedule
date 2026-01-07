@@ -6,6 +6,36 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import { useFormContext, Controller } from "react-hook-form";
 import { useState, useEffect } from "react";
 
+// === Components ===
+const DebouncedColorInput = ({ value, onChange, ...props }: any) => {
+    const [localValue, setLocalValue] = useState(value);
+
+    useEffect(() => {
+        setLocalValue(value);
+    }, [value]);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (localValue !== value) {
+                onChange(localValue);
+            }
+        }, 150);
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [localValue, onChange, value]);
+
+    return (
+        <input
+            type="color"
+            value={localValue}
+            onChange={(e) => setLocalValue(e.target.value)}
+            {...props}
+        />
+    );
+};
+
 // === Constants & Types ===
 const DEFAULT_DAY_TYPES = [
     { value: 'Делник', label: 'Д (Делник)', color: '#ffffff', darkColor: '#1e1e1e' }, // White / Dark Grey
@@ -139,10 +169,9 @@ const ColorLegend = ({ colors, onColorChange, onReset }: any) => {
                                             '&:hover': { opacity: 0.8 }
                                         }}
                                     >
-                                        <input 
-                                            type="color" 
+                                        <DebouncedColorInput 
                                             value={currentColor} 
-                                            onChange={(e) => onColorChange(dt.value, modeKey, e.target.value)}
+                                            onChange={(val: string) => onColorChange(dt.value, modeKey, val)}
                                             style={{ 
                                                 position: 'absolute', 
                                                 top: -5, left: -5, 
