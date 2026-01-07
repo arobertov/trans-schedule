@@ -7,6 +7,7 @@ import {
   Datagrid,
   ArrayField,
 } from "react-admin";
+import { PatternDetailsManager } from "./PatternDetailsManager";
 
 export const PatternShow = () => (
   <Show>
@@ -16,19 +17,15 @@ export const PatternShow = () => (
       <BooleanField source="is_active" label="Активен" />
       <TextField source="description" label="Описание" />
       <ArrayField source="columns" label="Колони">
-        <Datagrid>
+        <Datagrid bulkActionButtons={false}>
           <NumberField source="column_number" label="№" />
           <TextField source="column_name" label="Име" />
           <TextField source="label" label="Етикет" />
           <TextField source="description" label="Описание" />
         </Datagrid>
       </ArrayField>
-      <ArrayField source="details" label="Детайли">
-        <Datagrid bulkActionButtons={false}>
-          <NumberField source="position_number" label="Позиция" />
-          <TextField source="values" label="Стойности (JSON)" />
-        </Datagrid>
-      </ArrayField>
+      
+      <PatternDetailsManager />
     </SimpleShowLayout>
   </Show>
 );

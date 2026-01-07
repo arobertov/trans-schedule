@@ -5,6 +5,9 @@ import {
   useGetOne,
   useUpdate,
   Loading,
+  Button,
+  Confirm,
+  useDeleteMany
 } from "react-admin";
 import {
   DndContext,
@@ -34,8 +37,14 @@ import {
   Typography,
   Chip,
   useTheme,
+  Checkbox,
+  Tooltip,
+  IconButton,
+  Toolbar,
+  alpha
 } from "@mui/material";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 // Добави липсващите типове и интерфейси
 interface DetailRow {
@@ -66,10 +75,14 @@ const SortableRow = memo(({
   row,
   columns,
   onCellChange,
+  isSelected,
+  onSelect,
 }: {
   row: DetailRow;
   columns: any[];
   onCellChange: (rowId: number, columnName: string, value: string) => void;
+  isSelected: boolean;
+  onSelect: (rowId: number, checked: boolean) => void;
 }) => {
   const theme = useTheme();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -84,7 +97,10 @@ const SortableRow = memo(({
     opacity: isDragging ? 0.5 : 1,
     backgroundColor: isDragging 
       ? (isDarkMode ? theme.palette.grey[800] : "#f5f5f5")
-      : (isDarkMode ? theme.palette.background.paper : "white"),
+      : (isSelected 
+          ? alpha(theme.palette.primary.main, theme.palette.action.selectedOpacity)
+          : (isDarkMode ? theme.palette.background.paper : "white")
+        ),
   };
 
   return (
@@ -94,7 +110,23 @@ const SortableRow = memo(({
         ...style,
         pointerEvents: isDragging ? "none" : "auto",
       }}
+      selected={isSelected}
     >
+      <TableCell padding="checkbox">
+        <Checkbox
+            color="primary"
+            checked={isSelected}
+            onChange={(event) => {
+                // Prevent drag start when clicking checkbox
+                event.stopPropagation();
+                onSelect(row.id, event.target.checked);
+            }}
+            inputProps={{
+            'aria-labelledby': `enhanced-table-checkbox-${row.id}`,
+            }}
+            onPointerDown={(e) => e.stopPropagation()} // Stop DnD listeners
+        />
+      </TableCell>
       <TableCell
         sx={{
           cursor: isDragging ? "grabbing" : "grab",
@@ -130,6 +162,7 @@ const SortableRow = memo(({
             }}
             onFocus={(e) => (e.target.style.borderColor = theme.palette.primary.main)}
             onBlur={(e) => (e.target.style.borderColor = isDarkMode ? theme.palette.grey[700] : "#e0e0e0")}
+            onPointerDown={(e) => e.stopPropagation()} // Stop DnD listeners for input
           />
         </TableCell>
       ))}
@@ -139,15 +172,17 @@ const SortableRow = memo(({
 
 SortableRow.displayName = "SortableRow";
 
-// Поправен export - премахнато "DragTableExample", използва PatternDetailGrid
 export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGridProps) => {
   const theme = useTheme();
   const [details, setDetails] = useState<DetailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const [update] = useUpdate();
+  const [deleteMany, { isLoading: isDeleting }] = useDeleteMany();
 
   const { data: pattern, isLoading: patternLoading } = useGetOne("order_patterns", {
     id: patternId,
@@ -177,6 +212,63 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
   useEffect(() => {
     fetchDetails();
   }, [fetchDetails]);
+
+  // Handle Select All
+  const handleSelectAllClick = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      setDetails(currentDetails => {
+          const newSelecteds = currentDetails.map((n) => n.id);
+          setSelectedIds(newSelecteds);
+          return currentDetails;
+      });
+      return;
+    }
+    setSelectedIds([]);
+  }, []);
+
+  // Handle Single Select
+  const handleSelect = useCallback((id: number, checked: boolean) => {
+    setSelectedIds(prevSelectedIds => {
+        const selectedIndex = prevSelectedIds.indexOf(id);
+        let newSelected: number[] = [];
+
+        if (selectedIndex === -1) {
+            newSelected = newSelected.concat(prevSelectedIds, id);
+        } else if (selectedIndex === 0) {
+            newSelected = newSelected.concat(prevSelectedIds.slice(1));
+        } else if (selectedIndex === prevSelectedIds.length - 1) {
+            newSelected = newSelected.concat(prevSelectedIds.slice(0, -1));
+        } else if (selectedIndex > 0) {
+            newSelected = newSelected.concat(
+                prevSelectedIds.slice(0, selectedIndex),
+                prevSelectedIds.slice(selectedIndex + 1),
+            );
+        }
+        return newSelected;
+    });
+  }, []);
+
+  // Handle Bulk Delete
+  const handleDeleteConfirm = useCallback(() => {
+     deleteMany(
+        'order_pattern_details',
+        { ids: selectedIds },
+        {
+            onSuccess: () => {
+                notify(`Изтрити са ${selectedIds.length} записа`, { type: 'success' });
+                // Remove from local state
+                setDetails(prev => prev.filter(d => !selectedIds.includes(d.id)));
+                setSelectedIds([]);
+                setIsConfirmOpen(false);
+                if (onOrderChange) onOrderChange();
+            },
+            onError: (error: any) => {
+                notify(`Грешка при изтриване: ${error.message}`, { type: 'error' });
+                setIsConfirmOpen(false);
+            }
+        }
+     );
+  }, [selectedIds, deleteMany, notify, onOrderChange]);
 
   const handleCellChange = useCallback(
     async (rowId: number, columnName: string, value: string) => {
@@ -209,21 +301,16 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
     },
     [details, update, notify, pattern, patternId]
   );
-
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
+    useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
-  const handleDragStart = () => {
+  const handleDragStart = useCallback(() => {
     setIsDragging(true);
-  };
+  }, []);
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -255,15 +342,12 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
     setDetails(updatedDetails);
 
     // 2. Изпращане на заявка към API
-    // Тъй като вече имаме StateProcessor на бекенда, е нужно да обновим само
-    // елемента, който е преместен. Бекендът автоматично ще пренареди останалите.
     const movedItem = details[oldIndex];
     const newPosition = newIndex + 1;
 
     try {
       const patternIri = resolvePatternIri(movedItem, pattern, patternId);
       
-      // Изпращаме само новата позиция на преместения елемент
       await update("order_pattern_details", {
         id: (movedItem["@id"] as string | undefined) ?? movedItem.id,
         data: { 
@@ -285,37 +369,49 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
       
     } catch (error: any) {
       notify(`Грешка при запис: ${error.message}`, { type: "error" });
-      setDetails(details); // Връщане на старото състояние при грешка
+      setDetails(details); 
       setIsDragging(false);
     }
   };
 
   if (loading || patternLoading) return <Loading />;
 
-  if (!pattern) {
-    return (
-      <Box p={3}>
-        <Typography color="error">Порядъкът не е намерен</Typography>
-      </Box>
-    );
-  }
-
-  if (details.length === 0) {
-    return (
-      <Box p={3}>
-        <Typography>Няма детайли за този порядък</Typography>
-      </Box>
-    );
-  }
+  if (!pattern) return <Box p={3}><Typography color="error">Порядъкът не е намерен</Typography></Box>;
+  if (details.length === 0) return <Box p={3}><Typography>Няма детайли за този порядък</Typography></Box>;
 
   return (
     <Box>
-      <Box p={2} display="flex" justifyContent="space-between" alignItems="center">
-        <Typography variant="h6">{pattern.name}</Typography>
-        <Typography variant="body2" color="textSecondary">
-          {details.length} позиции
-        </Typography>
-      </Box>
+      {/* Enhanced Toolbar for Batch Actions */}
+      <Toolbar
+        sx={{
+          pl: { sm: 2 },
+          pr: { xs: 1, sm: 1 },
+          ...(selectedIds.length > 0 && {
+            bgcolor: (theme) =>
+              alpha(theme.palette.primary.main, theme.palette.action.activatedOpacity),
+          }),
+        }}
+      >
+        {selectedIds.length > 0 ? (
+          <Typography sx={{ flex: '1 1 100%' }} color="inherit" variant="subtitle1" component="div">
+            {selectedIds.length} избрани
+          </Typography>
+        ) : (
+          <Box display="flex" justifyContent="space-between" width="100%" alignItems="center">
+            <Typography variant="h6" id="tableTitle" component="div">
+              {pattern.name} ({details.length} позиции)
+            </Typography>
+          </Box>
+        )}
+
+        {selectedIds.length > 0 && (
+          <Tooltip title="Изтриване">
+            <IconButton onClick={() => setIsConfirmOpen(true)}>
+              <DeleteIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+      </Toolbar>
 
       <DndContext
         sensors={sensors}
@@ -331,6 +427,17 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
+                   <TableCell padding="checkbox">
+                    <Checkbox
+                      color="primary"
+                      indeterminate={selectedIds.length > 0 && selectedIds.length < details.length}
+                      checked={details.length > 0 && selectedIds.length === details.length}
+                      onChange={handleSelectAllClick}
+                      inputProps={{
+                        'aria-label': 'select all items',
+                      }}
+                    />
+                  </TableCell>
                   <TableCell sx={{ width: 50 }}></TableCell>
                   <TableCell sx={{ width: 80, fontWeight: "bold", color: theme.palette.text.primary }}>
                     Поз.
@@ -351,6 +458,8 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
                     row={row}
                     columns={columns}
                     onCellChange={handleCellChange}
+                    isSelected={selectedIds.indexOf(row.id) !== -1}
+                    onSelect={handleSelect}
                   />
                 ))}
               </TableBody>
@@ -364,6 +473,14 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
           💡 Съвет: Кликнете върху клетка за редактиране. Използвайте ⋮⋮ за преместване на редове.
         </Typography>
       </Box>
+
+      <Confirm
+        isOpen={isConfirmOpen}
+        title="Изтриване на детайли"
+        content={`Сигурни ли сте, че искате да изтриете ${selectedIds.length} избрани позиции? Тази операция не може да бъде отменена.`}
+        onConfirm={handleDeleteConfirm}
+        onClose={() => setIsConfirmOpen(false)}
+      />
     </Box>
   );
 };

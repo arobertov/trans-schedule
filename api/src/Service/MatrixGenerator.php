@@ -259,9 +259,28 @@ class MatrixGenerator
     {
         $normalizedDayType = $this->normalize($dayType);
 
+        // 1. Точно съвпадение
         foreach ($columnNames as $name) {
             if ($this->normalize($name) === $normalizedDayType) {
                 return $name;
+            }
+        }
+
+        // 2. Алиаси и съкращения за често използвани имена
+        $aliases = [
+            'делник' => ['д', 'd', 'work', 'w'],
+            'празник' => ['п', 'p', 'holiday', 'h'],
+            'празник_делник' => ['п_д', 'пд', 'p_d', 'pd'],
+            'делник_празник' => ['д_п', 'дп', 'd_p', 'dp'],
+            'делник_празник_делник' => ['д_п_д', 'дпд', 'dpd'],
+            'празник_празник_празник' => ['п_п_п', 'ппп', 'ppp'],
+        ];
+
+        if (isset($aliases[$normalizedDayType])) {
+            foreach ($columnNames as $name) {
+                if (in_array($this->normalize($name), $aliases[$normalizedDayType], true)) {
+                    return $name;
+                }
             }
         }
 

@@ -64,7 +64,7 @@ class Matrix
 
     #[ORM\Column(type: 'json', nullable: true)]
     #[ApiProperty(description: 'Заглавия на колоните (дата, ден от седмицата, тип ден)')]
-    #[Groups(['matrix:read'])]
+    #[Groups(['matrix:read', 'matrix:write'])]
     private ?array $header = null;
 
     #[ORM\Column(name: 'matrix_rows', type: 'json', nullable: true)]

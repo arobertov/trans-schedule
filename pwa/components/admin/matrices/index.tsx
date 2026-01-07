@@ -1,21 +1,166 @@
-import { Datagrid, List, TextField, DateField, ReferenceField, NumberField, FunctionField, Create, Edit, SimpleForm, ReferenceInput, SelectInput, NumberInput, required, Show, useRecordContext, useInput, Toolbar, SaveButton } from "react-admin";
-import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Box, Button, useTheme, MenuItem, Select, FormControl } from "@mui/material";
+import { Datagrid, List, TextField, DateField, ReferenceField, NumberField, FunctionField, Create, Edit, SimpleForm, ReferenceInput, SelectInput, NumberInput, required, Show, useRecordContext, useInput, Toolbar, SaveButton, EditButton } from "react-admin";
+import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Box, Button, useTheme, MenuItem, Select, FormControl, Popover, IconButton, Tooltip, Grid } from "@mui/material";
 import PrintIcon from '@mui/icons-material/Print';
+import PaletteIcon from '@mui/icons-material/Palette';
+import RestoreIcon from '@mui/icons-material/Restore';
 import { useFormContext, Controller } from "react-hook-form";
+import { useState, useEffect } from "react";
 
 // === Constants & Types ===
-const DAY_TYPES = [
+const DEFAULT_DAY_TYPES = [
     { value: 'Делник', label: 'Д (Делник)', color: '#ffffff', darkColor: '#1e1e1e' }, // White / Dark Grey
     { value: 'Празник_Делник', label: 'П/Д (Празник-Делник)', color: '#ffe0b2', darkColor: '#5d4037' }, // Orange / Brown
     { value: 'Делник_Празник', label: 'Д/П (Делник-Празник)', color: '#bbdefb', darkColor: '#0d47a1' }, // Light Blue / Dark Blue
-    { value: 'Делник_Празник_Делник', label: 'Д/П/Д (Сандвича)', color: '#e1bee7', darkColor: '#4a148c' }, // Purple / Dark Purple
+    { value: 'Делник_Празник_Делник', label: 'Д/П/Д (Празник между Делници)', color: '#e1bee7', darkColor: '#4a148c' }, // Purple / Dark Purple
     { value: 'Празник_Празник_Празник', label: 'П/П/П (Пълен Празник)', color: '#ffcdd2', darkColor: '#b71c1c' }, // Red / Dark Red
 ];
 
 // Helper to get color
-const getDayTypeColor = (type: string, isDark: boolean) => {
-    const found = DAY_TYPES.find(d => d.value === type);
+const getDayTypeColor = (type: string, isDark: boolean, customColors: any = null) => {
+    if (customColors && customColors[type]) {
+        return isDark ? customColors[type].dark : customColors[type].light;
+    }
+    const found = DEFAULT_DAY_TYPES.find(d => d.value === type);
     return found ? (isDark ? found.darkColor : found.color) : (isDark ? '#1e1e1e' : '#ffffff');
+};
+
+// === Hooks ===
+const useDayTypeColors = () => {
+    const [colors, setColors] = useState<any>(null);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem('matrix_day_colors');
+            if (stored) {
+                setColors(JSON.parse(stored));
+            }
+        }
+    }, []);
+
+    const updateColor = (type: string, mode: 'light' | 'dark', color: string) => {
+        const newColors = colors ? { ...colors } : {};
+        // Ensure all types exist if starting from null
+        if (!colors) {
+            DEFAULT_DAY_TYPES.forEach(dt => {
+                newColors[dt.value] = { light: dt.color, dark: dt.darkColor };
+            });
+        }
+        
+        // If specific type missing in loaded colors
+        if (!newColors[type]) {
+            const def = DEFAULT_DAY_TYPES.find(d => d.value === type);
+            if (def) newColors[type] = { light: def.color, dark: def.darkColor };
+        }
+
+        newColors[type] = { ...newColors[type], [mode]: color };
+        setColors(newColors);
+        localStorage.setItem('matrix_day_colors', JSON.stringify(newColors));
+    };
+
+    const resetColors = () => {
+        setColors(null);
+        localStorage.removeItem('matrix_day_colors');
+    };
+
+    return { colors, updateColor, resetColors };
+};
+
+// === Color Legend Component ===
+const ColorLegend = ({ colors, onColorChange, onReset }: any) => {
+    const theme = useTheme();
+    const isDark = theme.palette.mode === 'dark';
+    const modeKey = isDark ? 'dark' : 'light';
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+    const handleClick = (event: React.MouseEvent<HTMLElement>) => {
+        setAnchorEl(event.currentTarget);
+    };
+
+    const handleClose = () => {
+        setAnchorEl(null);
+    };
+
+    const open = Boolean(anchorEl);
+
+    return (
+        <>
+            <Button 
+                variant="outlined" 
+                startIcon={<PaletteIcon />} 
+                onClick={handleClick}
+                size="small"
+                sx={{ borderColor: isDark ? 'rgba(255,255,255,0.23)' : 'rgba(0,0,0,0.23)', color: 'inherit' }}
+            >
+                Легенда / Цветове
+            </Button>
+            <Popover
+                open={open}
+                anchorEl={anchorEl}
+                onClose={handleClose}
+                anchorOrigin={{
+                    vertical: 'bottom',
+                    horizontal: 'left',
+                }}
+                transformOrigin={{
+                    vertical: 'top',
+                    horizontal: 'left',
+                }}
+            >
+                <Box sx={{ p: 2, minWidth: 300 }}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Typography variant="subtitle1" fontWeight="bold">Легенда на типовете дни</Typography>
+                        <Tooltip title="Възстанови стандартните цветове">
+                            <IconButton size="small" onClick={onReset}>
+                                <RestoreIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                    </Box>
+                    <Typography variant="caption" color="textSecondary" display="block" mb={2}>
+                        Натисни цвета за да го промениш ({isDark ? 'Тъмна тема' : 'Светла тема'}).
+                    </Typography>
+                    
+                    <Box display="flex" flexDirection="column" gap={1}>
+                        {DEFAULT_DAY_TYPES.map(dt => {
+                            const currentColor = getDayTypeColor(dt.value, isDark, colors);
+                            return (
+                                <Box key={dt.value} display="flex" alignItems="center" gap={2}>
+                                    <Box 
+                                        component="label" 
+                                        sx={{ 
+                                            width: 32, 
+                                            height: 32, 
+                                            borderRadius: 1, 
+                                            border: '1px solid #ccc',
+                                            bgcolor: currentColor,
+                                            cursor: 'pointer',
+                                            display: 'block',
+                                            position: 'relative',
+                                            overflow: 'hidden',
+                                            '&:hover': { opacity: 0.8 }
+                                        }}
+                                    >
+                                        <input 
+                                            type="color" 
+                                            value={currentColor} 
+                                            onChange={(e) => onColorChange(dt.value, modeKey, e.target.value)}
+                                            style={{ 
+                                                position: 'absolute', 
+                                                top: -5, left: -5, 
+                                                width: 50, height: 50, 
+                                                padding: 0, margin: 0, 
+                                                border: 0, opacity: 0 
+                                            }} 
+                                        />
+                                    </Box>
+                                    <Typography variant="body2">{dt.label}</Typography>
+                                </Box>
+                            );
+                        })}
+                    </Box>
+                </Box>
+            </Popover>
+        </>
+    );
 };
 
 
@@ -40,8 +185,8 @@ export const MatrixList = () => (
 export const MatrixCreate = () => (
     <Create>
         <SimpleForm>
-            <ReferenceInput source="pattern" reference="order_patterns" label="Порядък">
-                <SelectInput optionText="name" validate={required()} />
+            <ReferenceInput source="pattern" reference="order_patterns">
+                <SelectInput optionText="name" label="Избери порядък" validate={required()} />
             </ReferenceInput>
             <NumberInput source="year" label="Година" defaultValue={new Date().getFullYear()} validate={required()} />
             <SelectInput source="month" label="Месец" choices={[
@@ -64,12 +209,11 @@ export const MatrixCreate = () => (
 );
 
 // === Show Component (The Visual Matrix) ===
-const MatrixView = () => {
+const MatrixView = ({ customColors }: { customColors?: any }) => {
     const record = useRecordContext();
     const theme = useTheme();
 
-    if (!record || !record.
-        header || !record.rows) return null;
+    if (!record || !record.header || !record.rows) return null;
 
     const { header, rows } = record;
     const isDark = theme.palette.mode === 'dark';
@@ -98,7 +242,7 @@ const MatrixView = () => {
                             {header.map((col: any, index: number) => {
                                 const dateObj = new Date(col.date);
                                 const dayOfMonth = dateObj.getDate();
-                                const bgColor = getDayTypeColor(col.day_type, isDark);
+                                const bgColor = getDayTypeColor(col.day_type, isDark, customColors);
                                 return (
                                     <TableCell 
                                         key={`date-${index}`} 
@@ -125,9 +269,9 @@ const MatrixView = () => {
                                 Ден
                             </TableCell>
                             {header.map((col: any, index: number) => {
-                                const bgColor = getDayTypeColor(col.day_type, isDark);
+                                const bgColor = getDayTypeColor(col.day_type, isDark, customColors);
                                 return (
-                                <TableCell 
+                                <TableCell  
                                     key={`day-${index}`} 
                                     align="center"
                                     sx={{ 
@@ -152,7 +296,7 @@ const MatrixView = () => {
                             </TableCell>
                             {rows.length > 0 && rows[0].cells.map((cell: any, index: number) => {
                                 const colHeader = header[index];
-                                const bgColor = getDayTypeColor(colHeader.day_type, isDark);
+                                const bgColor = getDayTypeColor(colHeader.day_type, isDark, customColors);
                                 return (
                                     <TableCell 
                                         key={`pos-${index}`} 
@@ -189,7 +333,7 @@ const MatrixView = () => {
                                 {/* Data Cells */}
                                 {rowData.cells.map((cell: any, cellIndex: number) => {
                                     const colHeader = header[cellIndex];
-                                    const bgColor = getDayTypeColor(colHeader.day_type, isDark);
+                                    const bgColor = getDayTypeColor(colHeader.day_type, isDark, customColors);
                                     
                                     return (
                                         <TableCell 
@@ -219,6 +363,7 @@ const MatrixView = () => {
 const MatrixLayout = () => {
     const record = useRecordContext();
     const theme = useTheme();
+    const { colors, updateColor, resetColors } = useDayTypeColors();
 
     if (!record) return null;
 
@@ -267,10 +412,12 @@ const MatrixLayout = () => {
                 `}
             </style>
 
-            <Box display="flex" justifyContent="flex-end" mb={2} className="no-print">
+            <Box display="flex" justifyContent="flex-start" gap={2} mb={2} className="no-print">
+                <EditButton />
                 <Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}>
                     Разпечатай
                 </Button>
+                <ColorLegend colors={colors} onColorChange={updateColor} onReset={resetColors} />
             </Box>
 
             <div id="printable-content">
@@ -310,13 +457,13 @@ const MatrixLayout = () => {
                         <Typography variant="subtitle2" color="textSecondary" sx={{ mb: 0.5, fontSize: '0.85rem' }}>
                             Начална позиция
                         </Typography>
-                        <Typography sx={{ fontSize: '1.25rem', fontWeight: 600 }}>
+                        <Typography sx={{ fontSize: '1.25rem', fontWeight: 600, textAlign: 'center' }}>
                             {record.start_position}
                         </Typography>
                     </Box>
                 </Box>
 
-                <MatrixView />
+                <MatrixView customColors={colors} />
             </div>
         </Box>
     );
@@ -394,7 +541,7 @@ const MatrixEditLayout = () => {
                                                         '& .MuiSelect-select': { paddingRight: '16px !important' }
                                                     }}
                                                 >
-                                                    {DAY_TYPES.map(dt => (
+                                                    {DEFAULT_DAY_TYPES.map(dt => (
                                                         <MenuItem key={dt.value} value={dt.value} sx={{ fontSize: '0.75rem' }}>
                                                             <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: isDark ? dt.darkColor : dt.color, display: 'inline-block', mr: 1 }} />
                                                             {dt.label}
@@ -423,8 +570,8 @@ const MatrixToolbar = () => (
 export const MatrixEdit = () => (
     <Edit>
         <SimpleForm toolbar={<MatrixToolbar />}>
-            <ReferenceInput source="pattern" reference="order_patterns" label="Порядък">
-                <SelectInput optionText="name" validate={required()} disabled />
+            <ReferenceInput source="pattern" reference="order_patterns" >
+                <SelectInput optionText="name" label="Порядък" validate={required()} disabled />
             </ReferenceInput>
             <Box display="flex" gap={2}>
                  <NumberInput source="year" label="Година" validate={required()} disabled />

@@ -26,7 +26,7 @@ export const PatternDetailForm = ({ isEdit = false }: Props) => {
     <Fragment>
       {!isEdit && (
         <ReferenceInput source="pattern" reference="order_patterns" label="Порядък" perPage={1000}>
-          <SelectInput optionText="name" />
+          <SelectInput label="Порядък" optionText="name" emptyText="Изберете порядък" />
         </ReferenceInput>
       )}
       <NumberInput source="position_number" label="Позиция" min={1} isRequired />

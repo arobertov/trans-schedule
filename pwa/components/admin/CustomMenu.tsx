@@ -70,18 +70,7 @@ export const CustomMenu = () => {
         to="/order_patterns"
         primaryText="Порядък"
         leftIcon={<ViewWeekIcon />}
-        onClick={handleOrderDetailsClick}
-        rightIcon={orderDetailsOpen ? <ExpandLess /> : <ExpandMore />}
       />
-      <Collapse in={orderDetailsOpen && open} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding></List>
-         <MenuItemLink
-            to="/order_pattern_details"
-            primaryText="Детайли на Порядък"
-            leftIcon={<ListAltIcon />}
-            sx={{ pl: 4 }}
-      />
-      </Collapse>
 
       <MenuItemLink
         to="/matrices"
