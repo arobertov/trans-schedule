@@ -13,6 +13,8 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use ApiPlatform\Metadata\ApiProperty;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use App\State\OrderPatternDetailsStateProcessor;
 
 #[ApiResource(
@@ -30,6 +32,7 @@ use App\State\OrderPatternDetailsStateProcessor;
         new Delete()
     ]
 )]
+#[ApiFilter(SearchFilter::class, properties: ['pattern' => 'exact'])]
 #[ORM\Entity(repositoryClass: OrderPatternDetailsRepository::class)]
 #[ORM\Table(name: 'order_pattern_details')]
 #[ORM\UniqueConstraint(name: 'unique_position_per_pattern', columns: ['pattern_id', 'position_number'])]

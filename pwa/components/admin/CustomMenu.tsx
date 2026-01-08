@@ -11,6 +11,7 @@ import ListAltIcon from '@mui/icons-material/ListAlt';
 import { Collapse, List } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
+import CalendarViewMonthIcon from '@mui/icons-material/CalendarViewMonth';
 
 export const CustomMenu = () => {
   const [employeesOpen, setEmployeesOpen] = React.useState(false);
@@ -67,20 +68,15 @@ export const CustomMenu = () => {
 
       <MenuItemLink
         to="/order_patterns"
-        primaryText="Порядъци"
+        primaryText="Порядък"
         leftIcon={<ViewWeekIcon />}
-        onClick={handleOrderDetailsClick}
-        rightIcon={orderDetailsOpen ? <ExpandLess /> : <ExpandMore />}
       />
-      <Collapse in={orderDetailsOpen && open} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding></List>
-         <MenuItemLink
-            to="/order_pattern_details"
-            primaryText="Детайли на Порядък"
-            leftIcon={<ListAltIcon />}
-            sx={{ pl: 4 }}
+
+      <MenuItemLink
+        to="/matrices"
+        primaryText="Матрица"
+        leftIcon={<CalendarViewMonthIcon />}
       />
-      </Collapse>
     </Menu>
   );
 };

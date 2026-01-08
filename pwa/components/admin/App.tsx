@@ -32,6 +32,7 @@ import {
   PatternDetailEdit,
   PatternBulkImport,
 } from "./patterns";
+import { MatrixList, MatrixCreate, MatrixShow, MatrixEdit } from "./matrices";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -88,6 +89,7 @@ const App = () => {
       <ResourceGuesser name="shift_schedules" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />
       <ResourceGuesser name="order_patterns" list={PatternList} create={PatternCreate} edit={PatternEdit} show={PatternShow} />
       <ResourceGuesser name="order_pattern_details" list={PatternDetailList} create={PatternDetailCreate} edit={PatternDetailEdit} />
+      <ResourceGuesser name="matrices" list={MatrixList} create={MatrixCreate} show={MatrixShow} edit={MatrixEdit} />
 
       <CustomRoutes>
         <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />

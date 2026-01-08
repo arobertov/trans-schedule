@@ -192,9 +192,9 @@ const BulkImportForm = () => {
         setText("");
         setPreviewData([]);
         
-        // Пренасочване към списъка с детайли след кратка пауза
+        // Пренасочване към прегледа на порядъка след кратка пауза
         setTimeout(() => {
-          redirect('/order_pattern_details');
+          redirect(`/order_patterns/${numericId}/show`);
         }, 1000);
       }
 
@@ -217,7 +217,9 @@ const BulkImportForm = () => {
           perPage={1000}
         >
           <SelectInput 
+            label="Порядък"
             optionText="name"
+            emptyText="Изберете порядък"
             onChange={(e) => {
               console.log("SelectInput onChange triggered, value:", e.target.value);
               setPatternId(e.target.value);
