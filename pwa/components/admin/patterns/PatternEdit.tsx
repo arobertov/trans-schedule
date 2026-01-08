@@ -7,6 +7,7 @@ import {
   ArrayInput,
   SimpleFormIterator
 } from "react-admin";
+import { AutoIncrementInput } from "../../common/AutoIncrementInput";
 
 export const PatternEdit = () => (
   <Edit>
@@ -18,7 +19,7 @@ export const PatternEdit = () => (
 
       <ArrayInput source="columns" label="Колони на порядъка">
         <SimpleFormIterator inline>
-          <NumberInput 
+          <AutoIncrementInput 
             source="column_number" 
             label="№" 
             min={1} 
