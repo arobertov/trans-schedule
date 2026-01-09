@@ -144,6 +144,21 @@ export const EmployeesBulkImport = () => {
           const middle_name = nameParts.length > 2 ? nameParts[1] : '';
           const last_name = nameParts.length > 2 ? nameParts.slice(2).join(' ') : (nameParts[1] || '');
 
+          // Client-side validation to avoid API 422 crashes
+          if (row.phone) {
+             const phoneRegex = /^(?:\+359|0)8[789]\d{7}$/;
+             if (!phoneRegex.test(row.phone.replace(/\s+/g, ''))) {
+                  throw new Error(`Невалиден телефонен номер: ${row.phone}`);
+             }
+          }
+
+          if (row.email) {
+             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+             if (!emailRegex.test(row.email.trim())) {
+                  throw new Error(`Невалиден имейл: ${row.email}`);
+             }
+          }
+
           await dataProvider.create('employees', {
             data: {
               first_name: first_name,
@@ -161,9 +176,80 @@ export const EmployeesBulkImport = () => {
           // Обновяване на прогреса
           setProgress(Math.round(((i + 1) / parsedRows.length) * 100));
         } catch (err: any) {
-          console.error(`Грешка при импорт на ред ${i + 1} (${row.full_name}):`, err);
-          const errorMsg = err?.body?.['hydra:description'] || err?.message || 'Неизвестна грешка';
-          errors.push(`Ред ${i + 1} (${row.full_name}): ${errorMsg}`);
+          // Flatten error for logging to prevent Next.js overlay crashes with complex objects
+          const cleanMessage = err?.message || 'Unknown error';
+          console.error(`Import error row ${i + 1}: ${cleanMessage}`);
+          
+          let errorMsg = 'Неизвестна грешка';
+          
+          // Try to extract a meaningful error message from various API Platform/Hydra formats
+          try {
+              let extractedMsg = '';
+
+              if (typeof err === 'string') {
+                  extractedMsg = err;
+              } 
+              // Handle Expanded JSON-LD (Array format) seen in some 422 responses
+              else if (Array.isArray(err?.body) && err.body.length > 0) {
+                  const errorObj = err.body[0];
+                  // Find keys ending with description or violations (ignoring full URI prefix)
+                  const keys = Object.keys(errorObj);
+                  const descKey = keys.find(k => k.includes('description'));
+                  const violationsKey = keys.find(k => k.includes('violations'));
+
+                  if (descKey && Array.isArray(errorObj[descKey]) && errorObj[descKey].length > 0) {
+                      extractedMsg = errorObj[descKey][0]['@value'] || errorObj[descKey][0];
+                  } else if (violationsKey && Array.isArray(errorObj[violationsKey])) {
+                      const violations = errorObj[violationsKey];
+                      const messages = violations.map((v: any) => {
+                          const vKeys = Object.keys(v);
+                          const msgKey = vKeys.find(k => k.includes('message'));
+                          const pathKey = vKeys.find(k => k.includes('propertyPath'));
+                          
+                          const msg = msgKey && v[msgKey]?.[0]?.['@value'] ? v[msgKey][0]['@value'] : '';
+                          const path = pathKey && v[pathKey]?.[0]?.['@value'] ? v[pathKey][0]['@value'] : '';
+                          
+                          return path ? `${path}: ${msg}` : msg;
+                      }).filter((m: string) => m);
+                      extractedMsg = messages.join('; ');
+                  }
+              }
+              // Handle Standard Hydra (Compact JSON-LD)
+              else if (err?.body?.['hydra:description']) {
+                  extractedMsg = String(err.body['hydra:description']);
+              } 
+              // Handle Standard Violations Array
+              else if (err?.body?.violations && Array.isArray(err.body.violations)) {
+                   extractedMsg = err.body.violations.map((v: any) => `${v.propertyPath}: ${v.message}`).join('; ');
+              }
+              // Fallback to generic message properties
+              else if (err?.message) {
+                  extractedMsg = String(err.message);
+              } 
+              else if (err?.body?.message) {
+                  extractedMsg = String(err.body.message);
+              }
+
+              if (extractedMsg) {
+                  errorMsg = extractedMsg;
+                  console.log('Extracted error message:', errorMsg);
+              }
+          } catch (e) {
+              console.error('Error parsing exception deeply:', e);
+              errorMsg = "Error parsing validation response";
+          }
+          
+          // Filter out phone number validation errors from the display list
+          // But still count them as failures
+          const lowerMsg = (errorMsg || '').toLowerCase();
+          const isPhoneError = lowerMsg.includes('phone') || 
+                               lowerMsg.includes('телефон') ||
+                               lowerMsg.includes('number');
+
+          if (!isPhoneError) {
+             errors.push(`Ред ${i + 1} (${row.full_name}): ${errorMsg}`);
+          }
+          
           failCount++;
           
           // Обновяване на прогреса дори при грешка
@@ -176,8 +262,16 @@ export const EmployeesBulkImport = () => {
       }
       
       if (failCount > 0) {
-        const errorText = errors.slice(0, 5).join('\n');
-        setError(`${failCount} служители не бяха импортирани:\n${errorText}${errors.length > 5 ? '\n...' : ''}`);
+        let errorReport = '';
+        if (errors.length > 0) {
+             const errorText = errors.slice(0, 5).join('\n');
+             errorReport = `${failCount} служители не бяха импортирани:\n${errorText}${errors.length > 5 ? '\n...' : ''}`;
+        } else {
+             // If errors were suppressed (like only phone errors), show generic message
+             errorReport = `${failCount} служители не бяха импортирани поради валидационни грешки (напр. невалиден телефон).`;
+        }
+        
+        setError(errorReport);
         notify(`${failCount} служители не бяха импортирани`, { type: 'warning' });
       }
 
