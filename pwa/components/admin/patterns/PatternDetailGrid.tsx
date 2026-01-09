@@ -34,6 +34,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableFooter, // Added
   Typography,
   Chip,
   useTheme,
@@ -427,6 +428,13 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
+                  <TableCell colSpan={columns.length + 3} sx={{ borderBottom: 'none' }}>
+                    <Typography variant="caption" color="textSecondary">
+                      💡 Съвет: Кликнете върху клетка за редактиране. Използвайте ⋮⋮ за преместване на редове.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+                <TableRow>
                    <TableCell padding="checkbox">
                     <Checkbox
                       color="primary"
@@ -467,12 +475,6 @@ export const PatternDetailGrid = ({ patternId, onOrderChange }: PatternDetailGri
           </TableContainer>
         </SortableContext>
       </DndContext>
-
-      <Box p={2}>
-        <Typography variant="caption" color="textSecondary">
-          💡 Съвет: Кликнете върху клетка за редактиране. Използвайте ⋮⋮ за преместване на редове.
-        </Typography>
-      </Box>
 
       <Confirm
         isOpen={isConfirmOpen}
