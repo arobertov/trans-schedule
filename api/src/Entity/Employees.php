@@ -41,7 +41,7 @@ use Symfony\Component\Validator\Constraints as Assert;
     paginationClientItemsPerPage: true
 )]
 #[ApiFilter(SearchFilter::class, properties: [
-    'position' => 'exact',
+    'position.id' => 'exact',
     'status' => 'exact',
     'first_name' => 'partial',
     'last_name' => 'partial',
