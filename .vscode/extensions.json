@@ -1,6 +1,9 @@
 {
     "recommendations": [
         "github.copilot-chat",
-        "formulahendry.vscode-mysql"
+        "formulahendry.vscode-mysql",
+        "xdebug.php-debug",
+        "msjsdiag.debugger-for-chrome",
+        "ms-vscode.js-debug"
     ]
 }

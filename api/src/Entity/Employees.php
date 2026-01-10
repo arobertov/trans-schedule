@@ -14,18 +14,12 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /*
- operations: [
-        new Get(description: 'Преглед на служител'),
-        new GetCollection(description: 'Списък със служители'),
-        new Post(description: 'Добавяне на нов служител'),
-        new Put(description: 'Пълна актуализация на служител'),
-        new Patch(description: 'Частична актуализация на служител'),
-        new Delete(description: 'Изтриване на служител')
-    ],
+ 
 */
 
 #[ORM\Entity(repositoryClass: EmployeesRepository::class)]
@@ -34,10 +28,25 @@ use Symfony\Component\Validator\Constraints as Assert;
     mercure: true,
     normalizationContext: ['groups' => ['employee:read']], 
     denormalizationContext: ['groups' => ['employee:write']],
+    operations: [
+        new Get(description: 'Преглед на служител'),
+        new GetCollection(description: 'Списък със служители'),
+        new Post(description: 'Добавяне на нов служител'),
+        new Put(description: 'Пълна актуализация на служител'),
+        new Patch(description: 'Частична актуализация на служител'),
+        new Delete(description: 'Изтриване на служител')
+    ],
     paginationItemsPerPage: 30,
     paginationClientEnabled: true,
     paginationClientItemsPerPage: true
 )]
+#[ApiFilter(SearchFilter::class, properties: [
+    'position' => 'exact',
+    'status' => 'exact',
+    'first_name' => 'partial',
+    'last_name' => 'partial',
+    'email' => 'partial'
+])]
 #[ORM\HasLifecycleCallbacks]
 class Employees
 {
@@ -184,7 +193,7 @@ class Employees
     )]
     private ?Positions $position = null;
 
-    // ... останалите методи от предишния код
+   
 
     public function getId(): ?int
     {

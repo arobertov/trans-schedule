@@ -16,6 +16,7 @@ export const MonthlyScheduleGrid = () => {
     const notify = useNotify();
     const [rows, setRows] = useState<ScheduleRow[]>([]);
     const [loading, setLoading] = useState(false);
+    const [loadedRecordId, setLoadedRecordId] = useState<any>(null);
     const [update] = useUpdate();
     const [matrices, setMatrices] = useState<any[]>([]);
     const [selectedMatrix, setSelectedMatrix] = useState<string>('');
@@ -23,6 +24,7 @@ export const MonthlyScheduleGrid = () => {
     // Fetch Employees and Initialize Rows
     useEffect(() => {
         if (!record || !record.id) return;
+        if (record.id === loadedRecordId) return;
         
         const init = async () => {
             setLoading(true);
@@ -31,16 +33,16 @@ export const MonthlyScheduleGrid = () => {
                 const existingRows = record.schedule_rows || [];
                 
                 // 2. Fetch Active Employees for Position
-                // Assuming we can filter employees by position
-                // Note: You might need to adjust the filter based on your API
                 const positionId = typeof record.position === 'object' ? record.position.id : record.position;
                 
                 if (positionId) {
                     const { data: employees } = await dataProvider.getList('employees', {
                         filter: { position: positionId, status: 'активен' },
-                        pagination: { page: 1, perPage: 100 },
+                        pagination: { page: 1, perPage: 1000 },
                         sort: { field: 'id', order: 'ASC' }
                     });
+
+                    console.log("Fetched Employees:", employees);
 
                     // 3. Merge
                     const mergedRows = employees.map((emp: any) => {
@@ -53,19 +55,24 @@ export const MonthlyScheduleGrid = () => {
                             matrix_row: '',
                         };
                     });
-                     // Maintain user added rows if any (though usually strictly bound to employees)
-                     // For now just use the employee list as source of truth for rows
+                    console.log("Merged Rows:", mergedRows);
                     setRows(mergedRows);
                 }
+                console.log("Loaded schedule data for record", record.id);
+                setLoadedRecordId(record.id);
             } catch (error) {
                 console.error("Error loading schedule data", error);
+                // Prevent infinite retries on error
+                setLoadedRecordId(record.id);
                 notify("Грешка при зареждане на служители", { type: 'error' });
             } finally {
                 setLoading(false);
+                console.log("Finished loading schedule data", loading);
             }
         };
         init();
-    }, [record, dataProvider, notify]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [record?.id]);
     
     // Fetch Matrices for the same period to allow selection
     useEffect(() => {
@@ -85,7 +92,8 @@ export const MonthlyScheduleGrid = () => {
             }
         };
         fetchMatrices();
-    }, [record, dataProvider]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [record?.year, record?.month, dataProvider]);
 
     const daysInMonth = record ? new Date(record.year, record.month, 0).getDate() : 30;
     const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -149,22 +157,30 @@ export const MonthlyScheduleGrid = () => {
             notify("Грешка при зареждане от матрица", { type: 'error' });
         }
     };
-
+    console.log("Finished loading schedule data", loading);
+    console.log("Rendering Rows:", rows) /* Debug log */ 
     if (loading) return <Typography>Зареждане...</Typography>;
+
+    const positionName = record?.position?.name || record?.position;
+    const isDriverPosition = positionName === 'Машинист ПЖМ';
 
     return (
         <Box sx={{ mt: 2, overflowX: 'auto' }}>
             <Box mb={2} display="flex" gap={2} alignItems="center">
-                <Typography>Матрица за импорт (Машинисти):</Typography>
-                <Select size="small" value={selectedMatrix} onChange={(e) => setSelectedMatrix(e.target.value)}>
-                    <MenuItem value="">-- Избери --</MenuItem>
-                    {matrices.map(m => (
-                        <MenuItem key={m.id} value={m.id}>
-                            #{m.id} - {m.year}/{m.month} (Start: {m.start_position})
-                        </MenuItem>
-                    ))}
-                </Select>
-                 <Button variant="contained" onClick={handleSave}>Запис</Button>
+                {isDriverPosition && (
+                    <>
+                        <Typography>Матрица за импорт (Машинисти):</Typography>
+                        <Select size="small" value={selectedMatrix} onChange={(e) => setSelectedMatrix(e.target.value)}>
+                            <MenuItem value="">-- Избери --</MenuItem>
+                            {matrices.map(m => (
+                                <MenuItem key={m.id} value={m.id}>
+                                    #{m.id} - {m.year}/{m.month} (Start: {m.start_position})
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </>
+                )}
+                <Button variant="contained" onClick={handleSave}>Запис</Button>
             </Box>
 
             <TableContainer component={Paper}>
@@ -172,8 +188,10 @@ export const MonthlyScheduleGrid = () => {
                     <TableHead>
                         <TableRow>
                             <TableCell style={{ minWidth: 150, zIndex: 10, left: 0, position: 'sticky', background: '#fff' }}>Служител</TableCell>
-                            <TableCell style={{ minWidth: 80, zIndex: 10, left: 150, position: 'sticky', background: '#fff' }}>Матрица Ред</TableCell>
-                             {daysArray.map(d => (
+                            {isDriverPosition && (
+                                <TableCell style={{ minWidth: 80, zIndex: 10, left: 150, position: 'sticky', background: '#fff' }}>Матрица Ред</TableCell>
+                            )}
+                            {daysArray.map(d => (
                                 <TableCell key={d} align="center" style={{ minWidth: 40, padding: 2 }}>{d}</TableCell>
                             ))}
                         </TableRow>
@@ -184,16 +202,18 @@ export const MonthlyScheduleGrid = () => {
                                 <TableCell style={{ position: 'sticky', left: 0, background: '#fff', zIndex: 5 }}>
                                     {row.employee_name}
                                 </TableCell>
-                                <TableCell style={{ position: 'sticky', left: 150, background: '#fff', zIndex: 5 }}>
-                                    <TextField 
-                                        size="small" 
-                                        value={row.matrix_row || ''} 
-                                        onChange={(e) => handleCellChange(index, 'matrix_row', e.target.value)}
-                                        onBlur={(e) => importMatrixRow(index, e.target.value)}
-                                        placeholder="#"
-                                        sx={{ width: 60 }}
-                                    />
-                                </TableCell>
+                                {isDriverPosition && (
+                                    <TableCell style={{ position: 'sticky', left: 150, background: '#fff', zIndex: 5 }}>
+                                        <TextField 
+                                            size="small" 
+                                            value={row.matrix_row || ''} 
+                                            onChange={(e) => handleCellChange(index, 'matrix_row', e.target.value)}
+                                            onBlur={(e) => importMatrixRow(index, e.target.value)}
+                                            placeholder="#"
+                                            sx={{ width: 60 }}
+                                        />
+                                    </TableCell>
+                                )}
                                 {daysArray.map(d => (
                                     <TableCell key={d} padding="none">
                                         <TextField
