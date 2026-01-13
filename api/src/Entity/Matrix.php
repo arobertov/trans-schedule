@@ -14,6 +14,9 @@ use App\State\MatrixStateProcessor;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 
 #[ApiResource(
     description: 'Календарна матрица за конкретен порядък',
@@ -28,6 +31,8 @@ use Symfony\Component\Validator\Constraints as Assert;
         new Delete()
     ]
 )]
+#[ApiFilter(OrderFilter::class, properties: ['year' => 'ASC', 'month' => 'ASC'])]
+#[ApiFilter(SearchFilter::class, properties: ['pattern' => 'exact', 'year' => 'exact', 'month' => 'exact'])]
 #[ORM\Entity(repositoryClass: MatrixRepository::class)]
 #[ORM\Table(name: 'matrices')]
 class Matrix

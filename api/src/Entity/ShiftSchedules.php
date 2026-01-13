@@ -24,7 +24,11 @@ use Symfony\Component\Validator\Constraints as Assert;
     paginationClientEnabled: true,
     paginationClientItemsPerPage: true
 )]
-#[ApiFilter(SearchFilter::class, properties: ['day_type' => 'exact', 'season' => 'exact', 'shift_code' => 'partial'])]
+#[ApiFilter(SearchFilter::class, properties: [
+    'day_type' => 'exact',
+    'season' => 'exact', 
+    'shift_code' => 'partial'
+])]
 #[ORM\HasLifecycleCallbacks]
 class ShiftSchedules
 {

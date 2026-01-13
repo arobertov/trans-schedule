@@ -1,0 +1,10 @@
+// pwa/components/admin/monthly_schedules/UniverScheduleGrid.css
+@import "@univerjs/design/lib/index.css";
+@import "@univerjs/ui/lib/index.css";
+@import "@univerjs/sheets-ui/lib/index.css";
+
+.univer-container {
+    width: 100%;
+    height: 85vh;
+    overflow: hidden;
+}

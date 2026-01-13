@@ -14,9 +14,14 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Delete;
-use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
+use ApiPlatform\Metadata\QueryParameter;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Metadata\Operation;
+use ApiPlatform\Metadata\Link;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
 
 /*
  
@@ -30,7 +35,9 @@ use Symfony\Component\Validator\Constraints as Assert;
     denormalizationContext: ['groups' => ['employee:write']],
     operations: [
         new Get(description: 'Преглед на служител'),
-        new GetCollection(description: 'Списък със служители'),
+        new GetCollection(
+            description: 'Списък със служители',
+        ),
         new Post(description: 'Добавяне на нов служител'),
         new Put(description: 'Пълна актуализация на служител'),
         new Patch(description: 'Частична актуализация на служител'),
@@ -40,13 +47,28 @@ use Symfony\Component\Validator\Constraints as Assert;
     paginationClientEnabled: true,
     paginationClientItemsPerPage: true
 )]
-#[ApiFilter(SearchFilter::class, properties: [
-    'position.id' => 'exact',
-    'status' => 'exact',
-    'first_name' => 'partial',
-    'last_name' => 'partial',
-    'email' => 'partial'
-])]
+#[ApiFilter(
+    SearchFilter::class, 
+    properties: [
+        'first_name' => 'partial',
+        'last_name' => 'partial',
+        'middle_name' => 'partial',
+        'email' => 'partial',
+        'phone' => 'partial',
+        'status' => 'exact',
+        'position' => 'exact'
+    ]
+)]
+#[ApiFilter(
+    OrderFilter::class, 
+    properties: [
+        'first_name',
+        'last_name',
+        'created_at',
+        'updated_at'
+    ],
+    arguments: ['orderParameterName' => 'order']
+)]
 #[ORM\HasLifecycleCallbacks]
 class Employees
 {

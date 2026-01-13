@@ -15,8 +15,12 @@ import { Box, Typography } from '@mui/material';
 
 const ListActions = () => (
     <TopToolbar>
-        <SelectColumnsButton />
-        <CreateButton />
+        <SelectColumnsButton
+            label="Колони"
+        />
+        <CreateButton
+            label="Добави служител"
+        />
         <Button
             component={Link}
             to="/employees/bulk-import"
@@ -25,6 +29,7 @@ const ListActions = () => (
         />
     </TopToolbar>
 );
+
 
 const Empty = () => (
     <Box textAlign="center" m={4}>
@@ -39,7 +44,7 @@ const Empty = () => (
                 variant="contained"
                 component={Link}
                 to="/employees/create"
-                label="Създай служител"
+                label="Добави служител"
             />
             <Button
                 variant="outlined"

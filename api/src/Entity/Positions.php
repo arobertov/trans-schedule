@@ -10,6 +10,8 @@ use Doctrine\ORM\Mapping as ORM;
 use ApiPlatform\Metadata\ApiResource;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
 
 #[ORM\Entity(repositoryClass: PositionsRepository::class)]
 #[ApiResource(
@@ -18,6 +20,7 @@ use Symfony\Component\Validator\Constraints as Assert;
     normalizationContext: ['groups' => ['position:read']], 
     denormalizationContext: ['groups' => ['position:write']]
 )]
+#[ApiFilter(OrderFilter::class, properties: ['name' => 'asc'])]
 class Positions
 {
     #[ORM\Id]

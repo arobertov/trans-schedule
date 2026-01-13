@@ -23,8 +23,8 @@ export const MonthlyScheduleEdit = () => (
                 ]} label="Статус" />
             </Box>
              <Box display="flex" gap={2}>
-                <NumberInput source="working_days" label="Работните дни" />
-                <NumberInput source="working_hours" label="Работните часове" />
+                <NumberInput source="working_days" label="Работни дни" />
+                <NumberInput source="working_hours" label="Работни часове" />
                 <TextInput source="description" label="Описание" fullWidth multiline />
             </Box>
             
