@@ -1,4 +1,4 @@
-import { Datagrid, List, NumberField, ReferenceField, TextField, EditButton, TextInput, ReferenceInput, SelectInput, DateInput } from "react-admin";
+import { Datagrid, List, NumberField, ReferenceField, TextField, EditButton, TextInput, ReferenceInput, SelectInput, FunctionField } from "react-admin";
 
 const listFilters = [
     <ReferenceInput source="position" reference="positions" alwaysOn>
@@ -8,6 +8,14 @@ const listFilters = [
     <TextInput source="month" label="Месец" alwaysOn />,
 ];
 
+const getMonthName = (month: number) => {
+    if (!month) return "";
+    const date = new Date();
+    date.setMonth(month - 1);
+    const monthName = date.toLocaleString('bg-BG', { month: 'long' });
+    return monthName.charAt(0).toUpperCase() + monthName.slice(1);
+};
+
 export const MonthlyScheduleList = () => (
     <List filters={listFilters} sort={{ field: 'id', order: 'DESC' }}>
         <Datagrid rowClick="edit">
@@ -15,7 +23,10 @@ export const MonthlyScheduleList = () => (
                 <TextField source="name" />
             </ReferenceField>
             <NumberField source="year" label="Година" />
-            <NumberField source="month" label="Месец" />
+            <FunctionField 
+                label="Месец" 
+                render={(record: any) => getMonthName(record.month)} 
+            />
             <TextField source="status" label="Статус" />
             <NumberField source="working_days" label="Раб. дни" />
             <NumberField source="working_hours" label="Раб. часове" />

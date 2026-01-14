@@ -13,6 +13,7 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import CalendarViewMonthIcon from '@mui/icons-material/CalendarViewMonth';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 
 export const CustomMenu = () => {
   const [employeesOpen, setEmployeesOpen] = React.useState(false);
@@ -77,6 +78,12 @@ export const CustomMenu = () => {
         to="/matrices"
         primaryText="Матрица"
         leftIcon={<CalendarViewMonthIcon />}
+      />
+
+      <MenuItemLink
+        to="/calendars"
+        primaryText="Календар"
+        leftIcon={<CalendarTodayIcon />}
       />
 
       <MenuItemLink

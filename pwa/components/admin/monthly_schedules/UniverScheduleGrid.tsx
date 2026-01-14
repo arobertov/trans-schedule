@@ -1,22 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDataProvider, useNotify, useRecordContext, useUpdate } from 'react-admin';
-import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl } from '@mui/material';
+import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton } from '@mui/material';
+import { Fullscreen, FullscreenExit } from '@mui/icons-material';
 import "@univerjs/design/lib/index.css";
 import "@univerjs/ui/lib/index.css";
 import "@univerjs/sheets-ui/lib/index.css";
 import "@univerjs/docs-ui/lib/index.css";
-import { Univer, LocaleType, UniverInstanceType } from '@univerjs/core';
+import "@univerjs/sheets-formula-ui/lib/index.css";
+import { Univer, LocaleType, UniverInstanceType, ICommandService } from '@univerjs/core';
 import { defaultTheme } from '@univerjs/design';
 import { UniverDocsPlugin } from '@univerjs/docs';
 import { UniverDocsUIPlugin } from '@univerjs/docs-ui';
 import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
 import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
-import { UniverSheetsPlugin } from '@univerjs/sheets';
+import { UniverSheetsPlugin, SetRangeValuesCommand } from '@univerjs/sheets';
+import { UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
+import { UniverSheetsFormulaUIPlugin } from '@univerjs/sheets-formula-ui';
 import { UniverSheetsUIPlugin } from '@univerjs/sheets-ui';
 import { UniverUIPlugin } from '@univerjs/ui';
 
 import { enUS as UniverDesignEnUS } from "@univerjs/design";
 import { enUS as UniverDocsUIEnUS } from "@univerjs/docs-ui";
+import { enUS as UniverSheetsFormulaUIEnUS } from "@univerjs/sheets-formula-ui";
 import { enUS as UniverSheetsUIEnUS } from "@univerjs/sheets-ui";
 import { enUS as UniverUIEnUS } from "@univerjs/ui";
 
@@ -44,6 +49,57 @@ export const UniverScheduleGrid = () => {
     });
     
     const [patterns, setPatterns] = useState<any[]>([]);
+    const [matrixData, setMatrixData] = useState<any[]>([]);
+    const [selectedMatrixId, setSelectedMatrixId] = useState<string>('');
+    const [update] = useUpdate();
+    const [loadedEmployees, setLoadedEmployees] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [calendarStats, setCalendarStats] = useState<{ workDays: number, workHours: number } | null>(null);
+
+    useEffect(() => {
+        if (!record || !record.year || !record.month) return;
+        
+        dataProvider.getList('calendars', {
+            filter: { year: record.year },
+            pagination: { page: 1, perPage: 1 },
+            sort: { field: 'year', order: 'DESC' }
+        })
+        .then(({ data }) => {
+            if (data && data.length > 0 && data[0].monthsData) {
+                const monthInfo = data[0].monthsData[record.month];
+                if (monthInfo) {
+                    setCalendarStats({
+                        workDays: monthInfo.workDays || 0,
+                        workHours: monthInfo.workHours || 0
+                    });
+                }
+            }
+        })
+        .catch(err => console.error("Failed to fetch calendar", err));
+    }, [dataProvider, record]);
+
+    useEffect(() => {
+        if (!record || !record.year || !record.month) return;
+        
+        let isMounted = true;
+        dataProvider.getList('matrices', { 
+            filter: { year: record.year, month: record.month },
+            pagination: { page: 1, perPage: 100 },
+            sort: { field: 'id', order: 'DESC' }
+        })
+        .then(({ data }) => {
+            if (isMounted) {
+                setMatrixData(data);
+                if (data.length > 0) {
+                    setSelectedMatrixId(String(data[0].id));
+                }
+            }
+        })
+        .catch(e => console.log("No matrix found", e));
+
+        return () => { isMounted = false; };
+    }, [dataProvider, record]);
     
     useEffect(() => {
         let isMounted = true;
@@ -75,6 +131,7 @@ export const UniverScheduleGrid = () => {
                 [LocaleType.EN_US]: {
                     ...UniverDesignEnUS,
                     ...UniverDocsUIEnUS,
+                    ...UniverSheetsFormulaUIEnUS,
                     ...UniverSheetsUIEnUS,
                     ...UniverUIEnUS,
                 },
@@ -93,6 +150,8 @@ export const UniverScheduleGrid = () => {
         univer.registerPlugin(UniverDocsUIPlugin);
         univer.registerPlugin(UniverSheetsPlugin);
         univer.registerPlugin(UniverSheetsUIPlugin);
+        univer.registerPlugin(UniverSheetsFormulaPlugin);
+        univer.registerPlugin(UniverSheetsFormulaUIPlugin);
 
         univerRef.current = univer;
 
@@ -140,6 +199,7 @@ export const UniverScheduleGrid = () => {
                         sort: { field: 'id', order: 'ASC' }
                     });
                     employees = data;
+                    setLoadedEmployees(data);
                 }
             } catch(e) { console.error(e); }
 
@@ -172,7 +232,9 @@ export const UniverScheduleGrid = () => {
                 const existing = savedRows.find((sr: any) => sr.employee_id === emp.id);
                 
                 // Static info
-                sheetData[r][0] = { v: `${emp.first_name} ${emp.last_name }` };
+                // Use all 3 names: first, middle (if any), last
+                const fullName = [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ');
+                sheetData[r][0] = { v: fullName };
                 sheetData[r][1] = { v: positionName }; // Updated
                 
                 // Matrix (restore or empty)
@@ -219,6 +281,7 @@ export const UniverScheduleGrid = () => {
             // Re-check mount/ref before final create
             if (isMounted && univerRef.current) {
                  workbookRef.current = univerRef.current.createUnit(UniverInstanceType.UNIVER_SHEET, wbConfig);
+                 setIsLoading(false);
             }
         })();
 
@@ -231,9 +294,9 @@ export const UniverScheduleGrid = () => {
     /* REMOVED SEPARATE CLEANUP EFFECT */
 
     const handleCalculate = async () => {
-        if (!univerRef.current) return;
+        if (!univerRef.current || !workbookRef.current) return;
         
-        const wb = univerRef.current.getActiveUnit(UniverInstanceType.UNIVER_SHEET);
+        const wb = workbookRef.current;
         const sheet = wb.getActiveSheet();
         
         const rowCount = sheet.getRowCount();
@@ -244,6 +307,20 @@ export const UniverScheduleGrid = () => {
         // We will simulate a simple "Cycle" logic (Day, Night, Rest, Rest)
         // In production, we must use `patterns` and `OrderPatternDetails`.
         
+        const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
+
+        // Find the source matrix rows based on selection
+        const selectedMatrix = matrixData.find(m => String(m.id) === selectedMatrixId);
+        const matrixRows = selectedMatrix ? (selectedMatrix.rows || []) : null;
+
+        if (!matrixRows && matrixData.length === 0) {
+            notify("Няма намерена матрица за този месец.", { type: 'warning' });
+        } else if (!matrixRows && selectedMatrixId) {
+             notify("Избраната матрица няма данни.", { type: 'warning' });
+        }
+
+        const updates: any[] = [];
+
         for(let r=1; r<rowCount; r++) {
              // Read Matrix Cols: 2,3,4,5
              const globalVal = sheet.getCell(r, 2)?.v;
@@ -262,23 +339,188 @@ export const UniverScheduleGrid = () => {
                      if (startPosToUse) {
                          const startPosFunc = Number(startPosToUse);
                          if (!isNaN(startPosFunc)) {
-                             const cycle = ['Д', 'Н', 'П', 'П']; 
-                             const val = cycle[(startPosFunc + d - 2) % 4]; 
-                             sheet.getRange(r, 5+d).setValue(val);
+                             let val = '';
+                             
+                             if (matrixRows) {
+                                  // Find the row in the pre-calculated matrix corresponding to startPosFunc
+                                  const targetRow = matrixRows.find((mr: any) => mr.start_position === startPosFunc);
+                                  if (targetRow && targetRow.cells && targetRow.cells[d-1]) {
+                                      // Matrix cells are 0-indexed, d is 1-indexed date
+                                      val = targetRow.cells[d-1].value || '';
+                                  }
+                             } else {
+                                // Fallback (Legacy)
+                                const cycle = ['Д', 'Н', 'П', 'П']; 
+                                val = cycle[(startPosFunc + d - 2) % 4]; 
+                             }
+
+                             if (val) {
+                                await commandService.executeCommand(SetRangeValuesCommand.id, {
+                                    unitId: wb.getUnitId(),
+                                    subUnitId: sheet.getSheetId(),
+                                    range: { startRow: r, startColumn: 5+d, endRow: r, endColumn: 5+d },
+                                    value: { v: val }
+                                });
+                             }
                          }
                      }
                  }
              }
         }
-        notify("Schedule filled from Matrix settings.", { type: 'success' });
+        notify("Графикът е попълнен от настройките на матрицата.", { type: 'success' });
+    };
+
+    const handleSave = async () => {
+        if (!workbookRef.current) return;
+        const sheet = workbookRef.current.getActiveSheet();
+        
+        const rowCount = sheet.getRowCount(); // Note: contains header + employees + empty space
+        const daysInMonth = sheet.getColumnCount() - 6;
+        
+        const newRows: any[] = [];
+        
+        // Iterate only rows corresponding to employees
+        // Assumes row index 1 maps to loadedEmployees[0]
+        if (loadedEmployees.length === 0) {
+            notify("No employee data loaded to map rows.", { type: 'warning' });
+            return;
+        }
+
+        for (let i = 0; i < loadedEmployees.length; i++) {
+            const r = i + 1; // 1-based index in sheet
+            const emp = loadedEmployees[i];
+            
+            // Read matrix configs from cols 2,3,4,5
+            const matrixGlobal = sheet.getCell(r, 2)?.v || '';
+            const matrixP1 = sheet.getCell(r, 3)?.v || '';
+            const matrixP2 = sheet.getCell(r, 4)?.v || '';
+            const matrixP3 = sheet.getCell(r, 5)?.v || '';
+            
+            const rowData: any = {
+                employee_id: emp.id,
+                matrix_global: matrixGlobal,
+                matrix_p1: matrixP1,
+                matrix_p2: matrixP2,
+                matrix_p3: matrixP3,
+            };
+
+            // Read days
+            for(let d=1; d<=daysInMonth; d++) {
+                const val = sheet.getCell(r, 5+d)?.v || '';
+                rowData[`day_${d}`] = val;
+            }
+            
+            newRows.push(rowData);
+        }
+        
+        // Trigger update
+        // Important: We must pass ALL required fields for PUT, or use PATCH if supported.
+        // API Platform PUT usually replaces the resource.
+        // And useRecordContext might return partial data.
+        
+        const payload = {
+            position: typeof record.position === 'object' ? record.position['@id'] : record.position,
+            year: record.year,
+            month: record.month,
+            schedule_rows: newRows,
+            status: record.status || 'чернова',
+            working_days: calendarStats ? calendarStats.workDays : record.working_days,
+            working_hours: calendarStats ? calendarStats.workHours : record.working_hours,
+        };
+
+        update('monthly_schedules', { 
+            id: record.id, 
+            data: payload,
+            previousData: record 
+        }, {
+            onSuccess: () => {
+                notify("Графикът е запазен успешно", { type: 'success' });
+            },
+            onError: (error) => {
+                notify(`Грешка при запазване: ${error.message}`, { type: 'error' });
+            }
+        });
+    };
+
+    const toggleFullscreen = () => {
+        setIsFullscreen(!isFullscreen);
+        setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+        }, 100);
     };
 
     return (
-        <Box mt={2} height="calc(100vh - 100px)" width="100%" display="flex" flexDirection="column">
-            <Box p={1} bgcolor="#f5f5f5" display="flex" gap={2} alignItems="center">
-                <Typography variant="body2" fontWeight="bold">Matrix Configuration:</Typography>
+        <Box 
+            position={isFullscreen ? "fixed" : "relative"}
+            top={isFullscreen ? 0 : undefined}
+            left={isFullscreen ? 0 : undefined}
+            width={isFullscreen ? "100vw" : "100%"}
+            height={isFullscreen ? "100vh" : "auto"}
+            zIndex={isFullscreen ? 1300 : 1}
+            bgcolor="background.paper"
+        >
+            {isLoading && (
+                <Box 
+                    position="absolute" 
+                    top={0} 
+                    left={0} 
+                    right={0} 
+                    bottom={0} 
+                    display="flex" 
+                    alignItems="center" 
+                    justifyContent="center" 
+                    bgcolor="rgba(255,255,255,0.8)" 
+                    zIndex={2000}
+                    flexDirection="column"
+                    gap={2}
+                >
+                    <CircularProgress />
+                    <Typography variant="h6" color="textSecondary">Зареждане...</Typography>
+                </Box>
+            )}
+            <Box 
+                mt={isFullscreen ? 0 : 2} 
+                height={isFullscreen ? "100%" : "calc(100vh - 100px)"} 
+                width="100%" 
+                display="flex" 
+                flexDirection="column"
+            >
+            <Box p={1} bgcolor="#f5f5f5" display="flex" gap={2} alignItems="center" flexWrap="wrap">
+                {calendarStats && (
+                    <Box display="flex" alignItems="center" bgcolor="#e3f2fd" px={2} py={1} borderRadius={1} border="1px solid #90caf9" mr={2}>
+                        <Typography variant="body2" color="primary" fontWeight="bold" sx={{ mr: 1 }}>
+                            {new Date(record.year, record.month - 1).toLocaleString('bg-BG', { month: 'long' }).toUpperCase()}:
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary">
+                            {calendarStats.workDays} дни / {calendarStats.workHours} часа
+                        </Typography>
+                    </Box>
+                )}
+
+                <Box display="flex" alignItems="center" gap={1}>
+                    <Typography variant="body2" fontWeight="bold">Матрица:</Typography>
+                    <FormControl size="small" sx={{ minWidth: 250 }}>
+                        <Select
+                            value={selectedMatrixId}
+                            onChange={(e) => setSelectedMatrixId(e.target.value)}
+                            displayEmpty
+                        >
+                             <MenuItem value="" disabled><em>Избери Матрица</em></MenuItem>
+                            {matrixData.map((m: any) => {
+                                 const monthName = new Date(m.year, m.month - 1).toLocaleString('bg-BG', { month: 'long' });
+                                 const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+                                 // Use pattern name if available, otherwise fallback to ID
+                                 const patternName = (typeof m.pattern === 'object' && m.pattern?.name) ? m.pattern.name : (m.pattern || 'Unknown');
+                                 
+                                 const label = `${capitalizedMonth} - ${patternName}`; 
+                                 return <MenuItem key={m.id} value={String(m.id)}>{label}</MenuItem>;
+                            })}
+                        </Select>
+                    </FormControl>
+                </Box>
+
                 <TextField 
-                    label="P1 End (Day)"
+                    label="П1 Край"
                     type="number"
                     size="small"
                     value={periods.p1End}
@@ -286,19 +528,30 @@ export const UniverScheduleGrid = () => {
                     sx={{ width: 100 }}
                 />
                 <TextField 
-                    label="P2 End (Day)"
+                    label="П2 Край"
                     type="number"
                     size="small"
                     value={periods.p2End}
                     onChange={e => setPeriods(p => ({ ...p, p2End: Number(e.target.value) }))}
                     sx={{ width: 100 }}
                 />
-                <Button variant="contained" onClick={handleCalculate} color="secondary">
-                    Auto-Fill from Matrix
+                <Button variant="contained" onClick={handleCalculate} color="secondary" size="small">
+                    Авто-Попълване
+                </Button>
+                
+                <Box flex={1} />
+                
+                <IconButton onClick={toggleFullscreen} color="primary" title={isFullscreen ? "Изход от цял екран" : "Цял екран"}>
+                    {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+                </IconButton>
+
+                <Button variant="contained" color="primary" onClick={handleSave}>
+                    Запази Промените
                 </Button>
             </Box>
             
             <div ref={containerRef} style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', border: '1px solid #ddd' }} />
+            </Box>
         </Box>
     );
 };
