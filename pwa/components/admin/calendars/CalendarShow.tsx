@@ -78,6 +78,20 @@ const CalendarYearView = () => {
     
     return (
         <Box p={2}>
+            <Box 
+                mb={3} 
+                p={2} 
+                bgcolor="#e3f2fd" 
+                borderRadius={2} 
+                border="1px solid #90caf9"
+                display="flex" 
+                justifyContent="center"
+                alignItems="center"
+            >
+                <Typography variant="h4" fontWeight="bold" color="#1565c0">
+                    Работен календар за {year} година
+                </Typography>
+            </Box>
             <Grid container spacing={2}>
                 {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                     <Grid item xs={12} sm={6} md={4} lg={3} key={m}>

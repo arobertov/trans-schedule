@@ -510,7 +510,7 @@ export const UniverScheduleGrid = () => {
                                  const monthName = new Date(m.year, m.month - 1).toLocaleString('bg-BG', { month: 'long' });
                                  const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
                                  // Use pattern name if available, otherwise fallback to ID
-                                 const patternName = (typeof m.pattern === 'object' && m.pattern?.name) ? m.pattern.name : (m.pattern || 'Unknown');
+                                 const patternName = (typeof m === 'object' && m.patternName) ? m.patternName : (m.pattern || 'Unknown');
                                  
                                  const label = `${capitalizedMonth} - ${patternName}`; 
                                  return <MenuItem key={m.id} value={String(m.id)}>{label}</MenuItem>;

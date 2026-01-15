@@ -85,6 +85,14 @@ class Matrix
     #[Groups(['matrix:read'])]
     private ?\DateTimeInterface $updated_at = null;
 
+
+    #[Groups(['matrix:read'])]
+    #[ApiProperty(description: 'Име на порядъка')]
+    public function getPatternName(): ?string
+    {
+        return $this->pattern?->getName();
+    }
+
     public function __construct()
     {
         $this->created_at = new \DateTimeImmutable();
