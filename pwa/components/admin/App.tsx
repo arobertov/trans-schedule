@@ -35,8 +35,26 @@ import {
 import { MatrixList, MatrixCreate, MatrixShow, MatrixEdit } from "./matrices";
 import { MonthlyScheduleList, MonthlyScheduleCreate, MonthlyScheduleEdit } from "./monthly_schedules";
 import { CalendarList, CalendarCreate, CalendarShow, CalendarEdit } from "./calendars"; 
+import { defaultTheme } from 'react-admin';
 
 const AnyHydraAdmin: any = HydraAdmin;
+
+const theme = {
+    ...defaultTheme,
+    typography: {
+        fontFamily: '"Sofia Sans", sans-serif',
+    },
+    components: {
+        ...defaultTheme.components,
+        MuiTypography: {
+            styleOverrides: {
+                root: {
+                    fontFamily: '"Sofia Sans", sans-serif',
+                },
+            },
+        },
+    },
+};
 
 // Wrap fetchHydra to add JWT token
 const authenticatedFetchHydra = (url: any, options: any = {}) => {
@@ -84,6 +102,7 @@ const App = () => {
       dashboard={Dashboard}
       layout={CustomLayout}
       i18nProvider={i18nProvider}
+      theme={theme}
     >
       <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} edit={EmployeesEdit} show={EmployeesShow} />
       <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
