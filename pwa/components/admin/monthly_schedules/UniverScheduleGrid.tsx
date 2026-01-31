@@ -7,7 +7,7 @@ import "@univerjs/ui/lib/index.css";
 import "@univerjs/sheets-ui/lib/index.css";
 import "@univerjs/docs-ui/lib/index.css";
 import "@univerjs/sheets-formula-ui/lib/index.css";
-import { Univer, LocaleType, UniverInstanceType, ICommandService } from '@univerjs/core';
+import { Univer, LocaleType, UniverInstanceType, ICommandService, IUniverInstanceService, merge } from '@univerjs/core';
 import { defaultTheme } from '@univerjs/design';
 import { UniverDocsPlugin } from '@univerjs/docs';
 import { UniverDocsUIPlugin } from '@univerjs/docs-ui';
@@ -25,13 +25,136 @@ import { enUS as UniverSheetsFormulaUIEnUS } from "@univerjs/sheets-formula-ui";
 import { enUS as UniverSheetsUIEnUS } from "@univerjs/sheets-ui";
 import { enUS as UniverUIEnUS } from "@univerjs/ui";
 
-const headerStyle = {
-    fill: { rgb: '#f0f0f0' },
-    hAlign: 2, 
-    vAlign: 2, 
-    bd: { b: { style: 1, color: { rgb: '#ccc' } }, r: { style: 1, color: { rgb: '#ccc' } } },
-    fw: 1, 
+const SCHEDULE_TEMPLATE = {
+    header: {
+        bg: { rgb: '#f0f0f0' },
+        ht: 2, 
+        vt: 2, 
+        ff: 'Sofia Sans',
+        bd: { 
+            t: { style: 1, color: { rgb: '#ccc' } }, 
+            b: { style: 1, color: { rgb: '#ccc' } }, 
+            l: { style: 1, color: { rgb: '#ccc' } }, 
+            r: { style: 1, color: { rgb: '#ccc' } } 
+        },
+        fw: 1, 
+    },
+    employeeName: {
+        vt: 2,
+        fw: 1,
+        ff: 'Sofia Sans',
+        bd: {
+            b: { style: 1, color: { rgb: '#e0e0e0' } },
+            r: { style: 1, color: { rgb: '#e0e0e0' } }
+        }
+    },
+    description: {
+         vt: 2,
+         fs: 10,
+         ff: 'Sofia Sans',
+         bd: {
+             b: { style: 1, color: { rgb: '#e0e0e0' } },
+             r: { style: 1, color: { rgb: '#e0e0e0' } }
+         },
+         cl: { rgb: '#0a0a0a' }
+    },
+    matrixCell: {
+        ht: 2,
+        vt: 2,
+        fs: 9,
+        ff: 'Sofia Sans',
+        bd: {
+            b: { style: 1, color: { rgb: '#f0f0f0' } },
+            r: { style: 1, color: { rgb: '#f0f0f0' } },
+            l: { style: 1, color: { rgb: '#f0f0f0' } }
+        },
+        cl: { rgb: '#888' }
+    },
+    normalCell: {
+        ht: 2, // Center
+        vt: 2,
+        ff: 'Sofia Sans',
+        bd: {
+            b: { style: 1, color: { rgb: '#f0f0f0' } },
+            r: { style: 1, color: { rgb: '#f0f0f0' } }
+        }
+    },
+    weekendCell: {
+        ht: 2,
+        vt: 2,
+        fill: { rgb: '#fff5f5' },
+        ff: 'Sofia Sans',
+        bd: {
+            b: { style: 1, color: { rgb: '#f0f0f0' } },
+            r: { style: 1, color: { rgb: '#f0f0f0' } }
+        }
+    },
+    // New Left Table Styles
+    leftTableHeader: {
+        bg: { rgb: '#EEECE1' },
+        ht: 2, 
+        vt: 2, 
+        ff: 'Sofia Sans',
+        bd: { 
+            t: { style: 1, color: { rgb: '#000' } }, 
+            b: { style: 1, color: { rgb: '#000' } }, 
+            l: { style: 1, color: { rgb: '#000' } }, 
+            r: { style: 1, color: { rgb: '#000' } } 
+        },
+        fw: 1,
+    },
+    countCellPink: {
+        bg: { rgb: '#ffdbcc' },
+        ht: 2, vt: 2, ff: 'Sofia Sans',
+        bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
+    },
+    countCellGreen: {
+        bg: { rgb: '#09ec09' },
+        ht: 2, vt: 2, ff: 'Sofia Sans',
+        bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
+    },
+    countCellRed: {
+        bg: { rgb: '#aa0a0a' },
+        ht: 2, vt: 2, ff: 'Sofia Sans',
+        bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
+    },
+    matrixInputCell: {
+         ht: 2, vt: 2, ff: 'Sofia Sans',
+         bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
+    },
+    // New Document Styles
+    title: {
+        fs: 18,
+        fw: 1,
+        ff: 'Sofia Sans',
+        ht: 2, // Center
+        vt: 2,
+    },
+    subTitle: {
+        fs: 11,
+        ff: 'Sofia Sans',
+        ht: 3, // Right
+        vt: 2,
+        cl: { rgb: '#000' }
+    },
+    legend: {
+        fs: 10,
+        ff: 'Sofia Sans',
+        ht: 1, // Left
+        vt: 2,
+        cl: { rgb: '#666' }
+    },
+    footerLabel: {
+         fs: 11,
+         ff: 'Sofia Sans',
+         vt: 2,
+         ht: 1,
+         pt: 20 
+    }
 };
+
+const GRID_ROW_OFFSET = 5; // Rows reserved for header info (0-4)
+
 
 export const UniverScheduleGrid = () => {
     const record = useRecordContext();
@@ -155,6 +278,88 @@ export const UniverScheduleGrid = () => {
 
         univerRef.current = univer;
 
+        // Validation Listener: Update Count (Col 0) when Global (Col 1) changes
+        const injector = (univer as any).__getInjector();
+        const commandService = injector.get(ICommandService);
+        const univerInstanceService = injector.get(IUniverInstanceService);
+
+        commandService.onCommandExecuted(async (command: any) => {
+            if (command.id === SetRangeValuesCommand.id) {
+                const params = command.params;
+                
+                // 1. Avoid infinite loop: if update is strictly on Col 0, ignore
+                if (params.range && params.range.startColumn === 0 && params.range.endColumn === 0) return;
+
+                // 2. React if update touches Col 1 (Global)
+                if (params.range && params.range.startColumn <= 1 && params.range.endColumn >= 1) {
+                    const wb = univerInstanceService.getUnit(params.unitId);
+                    const sheet = wb?.getSheetBySheetId(params.subUnitId);
+                    if (!sheet) return;
+
+                    const rowCount = sheet.getRowCount(); // includes headers
+                    
+                    // 3. First pass: Count frequencies for Global Column (Index 1)
+                    const counts = new Map<string, number>();
+                    
+                    for(let r = GRID_ROW_OFFSET; r < rowCount; r++) {
+                        const cell = sheet.getCell(r, 1);
+                        const val = cell?.v ? String(cell.v) : '';
+                        if (val) {
+                             counts.set(val, (counts.get(val) || 0) + 1);
+                        }
+                    }
+
+                    // 4. Second pass: Update Column 0 where needed
+                    // We execute updates sequentially to ensure stability
+                    for(let r = GRID_ROW_OFFSET; r < rowCount; r++) {
+                        // Current Global Value
+                        const cellGlobal = sheet.getCell(r, 1);
+                        const globalVal = cellGlobal?.v ? String(cellGlobal.v) : '';
+                        
+                        // Current Count Value/Style (to check if update needed)
+                        const cellCount = sheet.getCell(r, 0);
+                        const currentCountVal = cellCount?.v;
+                        const currentStyle = cellCount?.s; 
+                        // Note: style might be ID or object. Comparison is tricky.
+                        // We'll focus on Value + logical state logic.
+
+                        let newCount = 0;
+                        let newStyle = SCHEDULE_TEMPLATE.countCellPink;
+
+                        if (globalVal) {
+                            const freq = counts.get(globalVal) || 0;
+                            if (freq === 1) {
+                                newStyle = SCHEDULE_TEMPLATE.countCellGreen;
+                                newCount = 0;
+                            } else if (freq > 1) {
+                                newStyle = SCHEDULE_TEMPLATE.countCellRed;
+                                newCount = freq;
+                            }
+                        }
+
+                        // Optimization: Check if update is strictly necessary
+                        // Comparing styles by reference might fail if we create new objects, 
+                        // but SCHEDULE_TEMPLATE objects are const references in this file.
+                        // However, Univer might clone them.
+                        // Let's just update if values mismatch or purely rely on overwrite.
+                        // Overwriting is safer for correctness.
+                        
+                        // We trigger update only if logic suggests a change state mismatch?
+                        // Actually, purely checking value might be enough? 
+                        // Pink/Green both have 0. So we need to distinct them.
+                        // Let's just run the update. It's safer.
+                        
+                         await commandService.executeCommand(SetRangeValuesCommand.id, {
+                            unitId: params.unitId,
+                            subUnitId: params.subUnitId,
+                            range: { startRow: r, startColumn: 0, endRow: r, endColumn: 0 },
+                            value: { v: newCount, s: newStyle }
+                        });
+                    }
+                }
+            }
+        });
+
         // Cleanup function for THIS specific useEffect execution
         // This ensures proper cleanup whenever dependencies change or component unmounts
         // We do strictly sync dispose so React is happy
@@ -211,50 +416,161 @@ export const UniverScheduleGrid = () => {
             const daysInMonth = new Date(year, month, 0).getDate();
 
             // Structure:
-            const headers = ['Служител', 'Длъжност', 'Global', 'P1', 'P2', 'P3'];
+            // 0: Count (Calc)
+            // 1: Global (No)
+            // 2: P1 (I)
+            // 3: P2 (II)
+            // 4: P3 (III)
+            // 5: Spacer
+            // 6: No
+            // 7: Name
+            // 8: Position
+            // 9..: Days
+            const headers = ['Брой', 'Global', 'P1', 'P2', 'P3', '', '№', 'Служител', 'Длъжност'];
             for(let i=1; i<=daysInMonth; i++) headers.push(String(i));
+            const totalCols = headers.length;
 
             const sheetData: any = {};
+            const mergeData: any[] = [];
+
+            // --- HEADER REGION (Rows 0-4) ---
             
-            // Header
-            sheetData[0] = {};
-            headers.forEach((h, i) => {
-                sheetData[0][i] = { v: h, s: headerStyle };
+            // Row 0: Title (Spans whole width)
+            const monthName = new Date(year, month - 1).toLocaleString('bg-BG', { month: 'long' }).toUpperCase();
+            const titleText = `ГРАФИК ЗА РАБОТА НА ${positionName.toUpperCase()} ЗА МЕСЕЦ ${monthName} ${year} Г.`;
+            sheetData[0] = { 
+                0: { v: titleText, s: SCHEDULE_TEMPLATE.title } 
+            };
+            mergeData.push({ startRow: 0, endRow: 0, startColumn: 0, endColumn: totalCols - 1 });
+
+            // Row 1: Approved By
+            sheetData[1] = { 
+                [totalCols - 5]: { v: "Утвърдил: ............................", s: SCHEDULE_TEMPLATE.subTitle }
+            };
+            mergeData.push({ startRow: 1, endRow: 1, startColumn: totalCols - 5, endColumn: totalCols - 1 });
+
+            // Row 2: "Add row matrix" (Left) 
+            sheetData[2] = {
+                0: { v: 'Добави ред от матрицата', s: SCHEDULE_TEMPLATE.leftTableHeader }
+            };
+            mergeData.push({ startRow: 2, endRow: 2, startColumn: 0, endColumn: 4 });
+
+            // Row 3: "Whole month" / "Periods" (Left)
+            sheetData[3] = {};
+            sheetData[3][0] = { v: 'За целия месец', s: SCHEDULE_TEMPLATE.leftTableHeader };
+            sheetData[3][2] = { v: 'Периоди:', s: SCHEDULE_TEMPLATE.leftTableHeader };
+            mergeData.push({ startRow: 3, endRow: 3, startColumn: 0, endColumn: 1 });   // "Whole month" spans 2 cols
+            mergeData.push({ startRow: 3, endRow: 3, startColumn: 2, endColumn: 4 }); // Periods spans 3 cols
+
+            // Row 4: Grid Headers
+            const headerRowIdx = GRID_ROW_OFFSET - 1; // 4
+            sheetData[headerRowIdx] = {
+                // Left
+                0: { v: 'Брой повторения', s: SCHEDULE_TEMPLATE.leftTableHeader },
+                1: { v: 'Ред №', s: { ...SCHEDULE_TEMPLATE.leftTableHeader, fill: { rgb: '#ccc' } } },
+                2: { v: 'I', s: SCHEDULE_TEMPLATE.leftTableHeader },
+                3: { v: 'II', s: SCHEDULE_TEMPLATE.leftTableHeader },
+                4: { v: 'III', s: SCHEDULE_TEMPLATE.leftTableHeader },
+                
+                // Right
+                6: { v: '№', s: SCHEDULE_TEMPLATE.header },
+                7: { v: 'Име, Презиме, Фамилия', s: SCHEDULE_TEMPLATE.header },
+                8: { v: 'Длъжност', s: SCHEDULE_TEMPLATE.header },
+            };
+            
+            for(let i=1; i<=daysInMonth; i++) {
+                sheetData[headerRowIdx][8+i] = { v: String(i), s: SCHEDULE_TEMPLATE.header };
+            }
+
+            // Calculation for Frequencies (Global Only)
+            const savedRows = record.schedule_rows || [];
+            const idCounts = new Map<string, number>();
+            savedRows.forEach((r: any) => {
+                if(r.matrix_global) {
+                    const k = String(r.matrix_global);
+                    idCounts.set(k, (idCounts.get(k) || 0) + 1);
+                }
             });
 
             // Rows
-            const savedRows = record.schedule_rows || [];
-            
             employees.forEach((emp, index) => {
-                const r = index + 1;
+                const r = index + GRID_ROW_OFFSET; // Start after offset
                 sheetData[r] = {};
                 
                 const existing = savedRows.find((sr: any) => sr.employee_id === emp.id);
                 
-                // Static info
-                // Use all 3 names: first, middle (if any), last
-                const fullName = [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ');
-                sheetData[r][0] = { v: fullName };
-                sheetData[r][1] = { v: positionName }; // Updated
-                
-                // Matrix (restore or empty)
-                sheetData[r][2] = { v: existing?.matrix_global || '' };
-                sheetData[r][3] = { v: existing?.matrix_p1 || '' };
-                sheetData[r][4] = { v: existing?.matrix_p2 || '' };
-                sheetData[r][5] = { v: existing?.matrix_p3 || '' };
+                // --- LEFT TABLE DATA ---
+                const mg = existing?.matrix_global || '';
+                const mp1 = existing?.matrix_p1 || '';
+                const mp2 = existing?.matrix_p2 || '';
+                const mp3 = existing?.matrix_p3 || '';
 
+                // Calculate frequency (Global only)
+                let freq = 0;
+                if(mg) {
+                     freq = idCounts.get(String(mg)) || 0;
+                }
+                
+                // Determine Count Cell Style
+                let countStyle = SCHEDULE_TEMPLATE.countCellPink;
+                let countVal = 0;
+                
+                if (mg) {
+                    // If we have a Global ID
+                    if (freq === 1) {
+                        countStyle = SCHEDULE_TEMPLATE.countCellGreen;
+                        countVal = 0; 
+                    } else if (freq > 1) {
+                        countStyle = SCHEDULE_TEMPLATE.countCellRed;
+                        countVal = freq;
+                    }
+                } else {
+                     // Empty - Pink
+                     countStyle = SCHEDULE_TEMPLATE.countCellPink;
+                     countVal = 0;
+                }
+
+                sheetData[r][0] = { v: countVal, s: countStyle };
+                sheetData[r][1] = { v: mg, s: SCHEDULE_TEMPLATE.matrixInputCell };
+                sheetData[r][2] = { v: mp1, s: SCHEDULE_TEMPLATE.matrixInputCell };
+                sheetData[r][3] = { v: mp2, s: SCHEDULE_TEMPLATE.matrixInputCell };
+                sheetData[r][4] = { v: mp3, s: SCHEDULE_TEMPLATE.matrixInputCell };
+                
+                // Col 5 Spacer
+                sheetData[r][5] = { v: '', s: undefined };
+
+                // --- RIGHT TABLE DATA ---
+                const fullName = [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ');
+                
+                sheetData[r][6] = { v: index + 1, s: SCHEDULE_TEMPLATE.matrixCell }; 
+                sheetData[r][7] = { v: fullName, s: SCHEDULE_TEMPLATE.employeeName };
+                sheetData[r][8] = { v: positionName, s: SCHEDULE_TEMPLATE.description };
+                
                 // Days
                 for(let d=1; d<=daysInMonth; d++) {
-                    const c = 5 + d;
+                    const c = 8 + d; // Shifted: 0-8 occupied. Day 1 is 9.
+                    
                     const date = new Date(year, month-1, d);
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                     
+                    const savedStyle = existing?.[`day_${d}_s`];
+                    const templateStyle = isWeekend ? SCHEDULE_TEMPLATE.weekendCell : SCHEDULE_TEMPLATE.normalCell;
+
                     sheetData[r][c] = { 
                         v: existing?.[`day_${d}`] || '',
-                        s: isWeekend ? { bg: { rgb: '#fff0f0' } } : undefined
+                        s: savedStyle || templateStyle
                     };
                 }
             });
+
+            // --- FOOTER ---
+            const footerRowStart = employees.length + GRID_ROW_OFFSET + 2;
+            sheetData[footerRowStart] = {
+                0: { v: "Изготвил: ............................", s: SCHEDULE_TEMPLATE.footerLabel },
+                [totalCols - 5]: { v: "Съгласувал: ............................", s: SCHEDULE_TEMPLATE.footerLabel }
+            };
+            mergeData.push({ startRow: footerRowStart, endRow: footerRowStart, startColumn: totalCols - 5, endColumn: totalCols - 1 });
+            mergeData.push({ startRow: footerRowStart, endRow: footerRowStart, startColumn: 0, endColumn: 2 });
 
             const wbConfig = {
                 id: 'schedule-wb',
@@ -264,13 +580,18 @@ export const UniverScheduleGrid = () => {
                         id: 'sheet-1',
                         name: 'Schedule',
                         cellData: sheetData,
+                        mergeData: mergeData,
                         columnCount: headers.length,
-                        rowCount: employees.length + 10,
-                        freeze: { xSplit: 2, ySplit: 1 },
+                        rowCount: employees.length + GRID_ROW_OFFSET + 3, 
+                        freeze: { xSplit: 9, ySplit: GRID_ROW_OFFSET }, // Freeze at Day 1 (Col 9)
                         columnData: {
-                            0: { w: 180 },
-                            1: { w: 100 },
-                            2: { w: 50 }, 3: { w: 40 }, 4: { w: 40 }, 5: { w: 40 }
+                            0: { w: 80 }, // Count
+                            1: { w: 50 }, // Global
+                            2: { w: 40 }, 3: { w: 40 }, 4: { w: 40 }, // Periods
+                            5: { w: 20 }, // Spacer
+                            6: { w: 40 }, // No
+                            7: { w: 220 }, // Name
+                            8: { w: 100 }, // Position
                         }
                     }
                 },
@@ -321,17 +642,18 @@ export const UniverScheduleGrid = () => {
 
         const updates: any[] = [];
 
-        for(let r=1; r<rowCount; r++) {
-             // Read Matrix Cols: 2,3,4,5
-             const globalVal = sheet.getCell(r, 2)?.v;
-             const p1Val = sheet.getCell(r, 3)?.v;
-             const p2Val = sheet.getCell(r, 4)?.v;
-             const p3Val = sheet.getCell(r, 5)?.v;
+        for(let r=GRID_ROW_OFFSET; r<rowCount; r++) {
+             // Read Matrix Cols: 1,2,3,4 (Indices)
+             const globalVal = sheet.getCell(r, 1)?.v;
+             const p1Val = sheet.getCell(r, 2)?.v;
+             const p2Val = sheet.getCell(r, 3)?.v;
+             const p3Val = sheet.getCell(r, 4)?.v;
              
              if (globalVal || p1Val || p2Val || p3Val) {
-                 const days = sheet.getColumnCount() - 6;
+                 const days = sheet.getColumnCount() - 9; // Offset 9
                  for(let d=1; d<=days; d++) {
                      let startPosToUse = globalVal;
+                     // Logic for dates...
                      if (d <= periods.p1End && p1Val) startPosToUse = p1Val;
                      else if (d > periods.p1End && d <= periods.p2End && p2Val) startPosToUse = p2Val;
                      else if (d > periods.p2End && p3Val) startPosToUse = p3Val;
@@ -355,10 +677,11 @@ export const UniverScheduleGrid = () => {
                              }
 
                              if (val) {
+                                const c = 9 + d; // Offset 9
                                 await commandService.executeCommand(SetRangeValuesCommand.id, {
                                     unitId: wb.getUnitId(),
                                     subUnitId: sheet.getSheetId(),
-                                    range: { startRow: r, startColumn: 5+d, endRow: r, endColumn: 5+d },
+                                    range: { startRow: r, startColumn: c, endRow: r, endColumn: c },
                                     value: { v: val }
                                 });
                              }
@@ -375,7 +698,7 @@ export const UniverScheduleGrid = () => {
         const sheet = workbookRef.current.getActiveSheet();
         
         const rowCount = sheet.getRowCount(); // Note: contains header + employees + empty space
-        const daysInMonth = sheet.getColumnCount() - 6;
+        const daysInMonth = sheet.getColumnCount() - 9;
         
         const newRows: any[] = [];
         
@@ -387,14 +710,14 @@ export const UniverScheduleGrid = () => {
         }
 
         for (let i = 0; i < loadedEmployees.length; i++) {
-            const r = i + 1; // 1-based index in sheet
+            const r = i + GRID_ROW_OFFSET; 
             const emp = loadedEmployees[i];
             
-            // Read matrix configs from cols 2,3,4,5
-            const matrixGlobal = sheet.getCell(r, 2)?.v || '';
-            const matrixP1 = sheet.getCell(r, 3)?.v || '';
-            const matrixP2 = sheet.getCell(r, 4)?.v || '';
-            const matrixP3 = sheet.getCell(r, 5)?.v || '';
+            // Read matrix configs from cols 1,2,3,4
+            const matrixGlobal = sheet.getCell(r, 1)?.v || '';
+            const matrixP1 = sheet.getCell(r, 2)?.v || '';
+            const matrixP2 = sheet.getCell(r, 3)?.v || '';
+            const matrixP3 = sheet.getCell(r, 4)?.v || '';
             
             const rowData: any = {
                 employee_id: emp.id,
@@ -406,8 +729,24 @@ export const UniverScheduleGrid = () => {
 
             // Read days
             for(let d=1; d<=daysInMonth; d++) {
-                const val = sheet.getCell(r, 5+d)?.v || '';
+                const c = 9 + d; // Offset 9
+                const cell = sheet.getCell(r, c);
+                const val = cell?.v || '';
+                
                 rowData[`day_${d}`] = val;
+
+                // Save Style
+                if (cell && cell.s) {
+                    let style = cell.s;
+                    // If it is an ID string, resolve it from Styles collection
+                     if (typeof style === 'string' && workbookRef.current) {
+                        const styles = workbookRef.current.getStyles();
+                        style = styles.get(style);
+                    }
+                    if (style) {
+                         rowData[`day_${d}_s`] = style;
+                    }
+                }
             }
             
             newRows.push(rowData);
@@ -550,7 +889,7 @@ export const UniverScheduleGrid = () => {
                 </Button>
             </Box>
             
-            <div ref={containerRef} style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', border: '1px solid #ddd' }} />
+            <Box ref={containerRef} style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', border: '1px solid #ddd' }} />
             </Box>
         </Box>
     );
