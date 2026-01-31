@@ -9,18 +9,18 @@ use Psr\Log\LoggerInterface;
 
 class CalendarService
 {
-    private const BASE_URL = 'https://kik-info.com/spravochnik/calendar';
+    public const DEFAULT_URL = 'https://kik-info.com/spravochnik/calendar';
 
     public function __construct(
         private LoggerInterface $logger
     ) {}
 
-    public function getYearlyCalendarData(int $year): array
+    public function getYearlyCalendarData(int $year, array $options = []): array
     {
         $monthsData = [];
         
         for ($m = 1; $m <= 12; $m++) {
-            $monthsData[$m] = $this->getCalendarData($year, $m);
+            $monthsData[$m] = $this->getCalendarData($year, $m, $options);
             // Sleep slightly to avoid rate limiting if scraping
             if (isset($monthsData[$m]['scraped']) && $monthsData[$m]['scraped']) {
                 usleep(500000); // 0.5s delay
@@ -30,24 +30,93 @@ class CalendarService
         return $monthsData;
     }
 
-    public function getCalendarData(int $year, int $month): array
+    public function getCalendarData(int $year, int $month, array $options = []): array
     {
-        // 1. Try to fetch from external source
-        try {
-            $data = $this->fetchFromExternal($year, $month);
-            $data['scraped'] = true;
-            return $data;
-        } catch (\Throwable $e) {
-            $this->logger->warning("Failed to scrape calendar data for $year-$month, using fallback: " . $e->getMessage());
+        $provider = $options['provider'] ?? 'scrape';
+        $useBackup = $options['useBackup'] ?? false; // Default false to allow specific control, or true? 
+        // If we want existing calls (without options) to work as before, default needed.
+        // Existing calls in usage passed nothing. So $options is []. 
+        // Previously it ALWAYS fell back. 
+        // If I set $useBackup = true default, it mimics old behavior. 
+        // If the user specifically sends 'useBackup' => false, it will throw.
+        
+        // However, the Calendar Entity has $useBackup=false default.
+        // So I should probably check if key exists or just trust the value.
+        // If called from Processor, options are populated from Entity.
+        
+        // Let's use strict logic:
+        if ($provider === 'fallback') {
+            return $this->generateFallback($year, $month);
         }
 
-        // 2. Fallback to algorithmic generation
-        return $this->generateFallback($year, $month);
+        $url = $options['sourceUrl'] ?? self::DEFAULT_URL;
+        if (empty($url)) {
+             $url = self::DEFAULT_URL;
+        }
+
+        try {
+            if ($provider === 'api') {
+                $data = $this->fetchFromApi($url, $year, $month);
+            } else {
+                $data = $this->fetchFromExternal($year, $month, $url);
+            }
+            $data['scraped'] = true;
+            $data['source'] = $provider;
+            $data['provider_url'] = $url;
+            return $data;
+        } catch (\Throwable $e) {
+            if ($useBackup) {
+                $this->logger->warning("Failed to fetch data ($provider) for $year-$month, using fallback: " . $e->getMessage());
+                $data = $this->generateFallback($year, $month);
+                $data['source'] = 'fallback_error';
+                $data['error_details'] = $e->getMessage();
+                return $data;
+            }
+            
+            throw new \RuntimeException("Неуспешна връзка с източника ($url). Моля проверете интернет връзката или изберете опцията за резервна логика. Грешка: " . $e->getMessage());
+        }
     }
 
-    private function fetchFromExternal(int $year, int $month): array
+    private function fetchFromApi(string $baseUrl, int $year, int $month): array
     {
-        $url = sprintf('%s/%d/', self::BASE_URL, $year);
+        // Example API implementation
+        // Expects JSON response
+        $url = sprintf('%s?year=%d&month=%d', $baseUrl, $year, $month);
+        
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 5,
+                'header' => "Accept: application/json\r\n"
+            ]
+        ]);
+
+        $json = @file_get_contents($url, false, $context);
+        
+        if ($json === false) {
+             throw new \RuntimeException("Could not fetch API: $url");
+        }
+
+        $data = json_decode($json, true);
+        if (!$data || !isset($data['days'])) {
+             throw new \RuntimeException("Invalid API response from $url");
+        }
+
+        return $data;
+    }
+
+    private function fetchFromExternal(int $year, int $month, string $baseUrl = self::DEFAULT_URL): array
+    {
+        // Adjust URL structure if needed. Assuming base url allows appending /year/
+        // Original: https://kik-info.com/spravochnik/calendar/2026/
+        // If user provides a different base URL for scraping, we assume same structure?
+        // Risky, but that's what generic 'web address' implies for scraping.
+        // Or maybe just use the given URL directly if it contains the year?
+        
+        // Let's assume the user changes the domain but same site structure (mirrors?)
+        // Or they paste the FULL url?
+        
+        // If baseUrl ends in /, append year.
+        $url = rtrim($baseUrl, '/') . '/' . $year . '/';
         
         $context = stream_context_create([
             'http' => [

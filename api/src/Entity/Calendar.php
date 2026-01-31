@@ -5,6 +5,7 @@ namespace App\Entity;
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
+use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
@@ -47,6 +48,18 @@ class Calendar
     #[Assert\NotNull]
     #[Groups(['calendar:read', 'calendar:write'])]
     private ?int $year = null;
+
+    #[Groups(['calendar:write'])]
+    #[ApiProperty(description: 'URL адрес за извличане на данни (Kik Info или API)')]
+    public ?string $sourceUrl = null;
+
+    #[Groups(['calendar:write'])]
+    #[ApiProperty(description: 'Източник на данни: "scrape", "api" или "fallback"')]
+    public ?string $provider = 'scrape';
+
+    #[Groups(['calendar:write'])]
+    #[ApiProperty(description: 'Използване на резервна логика при липса на връзка')]
+    public bool $useBackup = false;
 
     /**
      * @var array<int, array> Data for all 12 months. Key = month number.

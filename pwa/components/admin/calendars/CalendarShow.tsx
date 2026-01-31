@@ -75,6 +75,10 @@ const CalendarYearView = () => {
     if (!record || !record.year || !record.monthsData) return null;
     
     const year = record.year;
+    // Get metadata from the first month (assuming consistent generation)
+    const meta = record.monthsData && record.monthsData[1] ? record.monthsData[1] : {};
+    const source = meta.source || 'N/A';
+    const sourceUrl = meta.provider_url;
     
     return (
         <Box p={2}>
@@ -85,11 +89,17 @@ const CalendarYearView = () => {
                 borderRadius={2} 
                 border="1px solid #90caf9"
                 display="flex" 
+                flexDirection="column"
                 justifyContent="center"
                 alignItems="center"
             >
                 <Typography variant="h4" fontWeight="bold" color="#1565c0">
                     Работен календар за {year} година
+                </Typography>
+                <Typography variant="caption" color="text.secondary" mt={1}>
+                    Източник: <strong>{source}</strong> {sourceUrl && `(${sourceUrl})`}
+                    {meta.scraped && ' [Scraped]'}
+                    {source === 'fallback' && ' [Algorithmic Gen]'}
                 </Typography>
             </Box>
             <Grid container spacing={2}>
