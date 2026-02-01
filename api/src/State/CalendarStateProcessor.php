@@ -25,8 +25,14 @@ class CalendarStateProcessor implements ProcessorInterface
             // We assume if 'monthsData' is empty, we should fetch it.
             if (empty($data->getMonthsData()) && $data->getYear()) {
                 
+                $options = [
+                    'sourceUrl' => $data->sourceUrl,
+                    'provider' => $data->provider,
+                    'useBackup' => $data->useBackup
+                ];
+
                 // Fetch data from service for ALL months
-                $calendarData = $this->calendarService->getYearlyCalendarData($data->getYear());
+                $calendarData = $this->calendarService->getYearlyCalendarData($data->getYear(), $options);
                 $data->setMonthsData($calendarData);
             }
         }
