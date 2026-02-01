@@ -18,27 +18,49 @@ export const CalendarCreate = () => {
     const [showBackupDialog, setShowBackupDialog] = useState(false);
     const [pendingData, setPendingData] = useState<any>(null);
 
-    const handleSubmit = (data: any) => {
-        create('calendars', { data }, {
-            onSuccess: (record) => {
-                notify('Календарът е създаден успешно');
-                // record might be the response wrapper or the data itself depending on RA version/Data Provider
-                // Usually record.id works.
-                redirect('show', 'calendars', record.id);
-            },
-            onError: (error: any) => {
-                const msg = error?.message || error?.body?.['hydra:description'] || 'Unknown error';
-                console.error('Create error:', error);
+    
+   const handleSubmit = (data: any) => {
+    create('calendars', { data }, {
+        onSuccess: (record) => {
+            notify('Календарът е създаден успешно');
+            redirect('show', 'calendars', record.id);
+        },
+        onError: async (error: any) => {
+            let errorMessage = '';
 
-                if (msg.includes('Неуспешна връзка') || msg.includes('Failed to scrape') || msg.includes('connection') || msg.includes('500')) {
-                    setPendingData(data);
-                    setShowBackupDialog(true);
-                } else {
-                    notify(`Грешка: ${msg}`, { type: 'error' });
+            // 1. Проверяваме дали грешката е обработена от Data Provider-а (често в error.body)
+            // 2. Ако не е, но имаме response обект, трябва да прочетем JSON-а
+            if (error.body && error.body.description) {
+                errorMessage = error.body.description;
+            } else if (error.response && typeof error.response.json === 'function') {
+                try {
+                    const clonedResponse = error.response.clone(); // Клонираме, за да не "консумираме" стрийма два пъти
+                    const errorData = await clonedResponse.json();
+                    errorMessage = errorData.description || errorData.detail || 'Unknown error';
+                } catch (e) {
+                    errorMessage = 'Грешка при четене на отговора от сървъра';
                 }
+            } else {
+                errorMessage = error.message || 'Възникна неочаквана грешка';
             }
-        });
-    };
+
+            console.log('Processed Error Message:', errorMessage);
+
+            // Сега проверката ще работи, защото errorMessage е чист текст
+            const isConnectionIssue = 
+                errorMessage.includes('Неуспешна връзка') || 
+                errorMessage.includes('Could not fetch') || 
+                error.status === 500;
+
+            if (isConnectionIssue) {
+                setPendingData(data);
+                setShowBackupDialog(true);
+            } else {
+                notify(`Грешка: ${errorMessage}`, { type: 'error' });
+            }
+        }
+    });
+};
 
     const handleConfirmBackup = () => {
         if (!pendingData) return;
@@ -72,7 +94,7 @@ export const CalendarCreate = () => {
                         label="Източник на данни"
                         defaultValue="scrape"
                         choices={[
-                            { id: 'scrape', name: 'Kik-Info (Web Scraping)' },
+                            { id: 'scrape', name: 'Kik-Info (Извличане на данни от интернет)' },
                             { id: 'api', name: 'Външно API' },
                             { id: 'fallback', name: 'Алгоритмично (Без Интернет)' },
                         ]}
@@ -84,7 +106,7 @@ export const CalendarCreate = () => {
                         label="Web адрес / API URL" 
                         fullWidth
                         defaultValue="https://kik-info.com/spravochnik/calendar"
-                        helperText="За scraping: основен URL. За API: endpoint URL."
+                        helperText="За извичане на данни от интернет: основен URL. За API: endpoint URL."
                     />
 
                     <BooleanInput 

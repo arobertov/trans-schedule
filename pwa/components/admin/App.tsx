@@ -59,7 +59,7 @@ const theme = {
 // Wrap fetchHydra to add JWT token
 const authenticatedFetchHydra = (url: any, options: any = {}) => {
   const token = getToken();
-  console.log('authenticatedFetchHydra called:', url.toString(), 'hasToken:', !!token);
+  //console.log('authenticatedFetchHydra called:', url.toString(), 'hasToken:', !!token);
 
   // Проверка дали токенът е изтекъл
   if (token) {
