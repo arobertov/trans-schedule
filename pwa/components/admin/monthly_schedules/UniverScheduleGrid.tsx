@@ -180,6 +180,15 @@ export const UniverScheduleGrid = () => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [calendarStats, setCalendarStats] = useState<{ workDays: number, workHours: number } | null>(null);
 
+    // Refs for accessing state inside Univer listeners
+    const periodsRef = useRef(periods);
+    const matrixDataRef = useRef(matrixData);
+    const selectedMatrixIdRef = useRef(selectedMatrixId);
+
+    useEffect(() => { periodsRef.current = periods; }, [periods]);
+    useEffect(() => { matrixDataRef.current = matrixData; }, [matrixData]);
+    useEffect(() => { selectedMatrixIdRef.current = selectedMatrixId; }, [selectedMatrixId]);
+
     useEffect(() => {
         if (!record || !record.year || !record.month) return;
         
@@ -286,19 +295,22 @@ export const UniverScheduleGrid = () => {
         commandService.onCommandExecuted(async (command: any) => {
             if (command.id === SetRangeValuesCommand.id) {
                 const params = command.params;
+                const range = params.range;
                 
+                if (!range) return;
+
                 // 1. Avoid infinite loop: if update is strictly on Col 0, ignore
-                if (params.range && params.range.startColumn === 0 && params.range.endColumn === 0) return;
+                if (range.startColumn === 0 && range.endColumn === 0) return;
 
-                // 2. React if update touches Col 1 (Global)
-                if (params.range && params.range.startColumn <= 1 && params.range.endColumn >= 1) {
-                    const wb = univerInstanceService.getUnit(params.unitId);
-                    const sheet = wb?.getSheetBySheetId(params.subUnitId);
-                    if (!sheet) return;
-
+                const wb = univerInstanceService.getUnit(params.unitId);
+                const sheet = wb?.getSheetBySheetId(params.subUnitId);
+                if (!sheet) return;
+                
+                // 2. React if update touches Col 1 (Global) - Update Counts
+                if (range.startColumn <= 1 && range.endColumn >= 1) {
                     const rowCount = sheet.getRowCount(); // includes headers
                     
-                    // 3. First pass: Count frequencies for Global Column (Index 1)
+                    // First pass: Count frequencies for Global Column (Index 1)
                     const counts = new Map<string, number>();
                     
                     for(let r = GRID_ROW_OFFSET; r < rowCount; r++) {
@@ -309,20 +321,11 @@ export const UniverScheduleGrid = () => {
                         }
                     }
 
-                    // 4. Second pass: Update Column 0 where needed
-                    // We execute updates sequentially to ensure stability
+                    // Second pass: Update Column 0 where needed
                     for(let r = GRID_ROW_OFFSET; r < rowCount; r++) {
-                        // Current Global Value
                         const cellGlobal = sheet.getCell(r, 1);
                         const globalVal = cellGlobal?.v ? String(cellGlobal.v) : '';
                         
-                        // Current Count Value/Style (to check if update needed)
-                        const cellCount = sheet.getCell(r, 0);
-                        const currentCountVal = cellCount?.v;
-                        const currentStyle = cellCount?.s; 
-                        // Note: style might be ID or object. Comparison is tricky.
-                        // We'll focus on Value + logical state logic.
-
                         let newCount = 0;
                         let newStyle = SCHEDULE_TEMPLATE.countCellPink;
 
@@ -330,31 +333,77 @@ export const UniverScheduleGrid = () => {
                             const freq = counts.get(globalVal) || 0;
                             if (freq === 1) {
                                 newStyle = SCHEDULE_TEMPLATE.countCellGreen;
-                                newCount = 0;
+                                newCount = 1;
                             } else if (freq > 1) {
                                 newStyle = SCHEDULE_TEMPLATE.countCellRed;
                                 newCount = freq;
                             }
                         }
 
-                        // Optimization: Check if update is strictly necessary
-                        // Comparing styles by reference might fail if we create new objects, 
-                        // but SCHEDULE_TEMPLATE objects are const references in this file.
-                        // However, Univer might clone them.
-                        // Let's just update if values mismatch or purely rely on overwrite.
-                        // Overwriting is safer for correctness.
-                        
-                        // We trigger update only if logic suggests a change state mismatch?
-                        // Actually, purely checking value might be enough? 
-                        // Pink/Green both have 0. So we need to distinct them.
-                        // Let's just run the update. It's safer.
-                        
-                         await commandService.executeCommand(SetRangeValuesCommand.id, {
+                        await commandService.executeCommand(SetRangeValuesCommand.id, {
                             unitId: params.unitId,
                             subUnitId: params.subUnitId,
                             range: { startRow: r, startColumn: 0, endRow: r, endColumn: 0 },
                             value: { v: newCount, s: newStyle }
                         });
+                    }
+                }
+
+                // 3. Auto-fill schedule if update touches Matrix Inputs (Cols 1-4)
+                if (range.endColumn >= 1 && range.startColumn <= 4) {
+                    const currentMatrixData = matrixDataRef.current;
+                    const currentMatrixId = selectedMatrixIdRef.current;
+                    const currentPeriods = periodsRef.current;
+
+                    const selectedMatrix = currentMatrixData.find(m => String(m.id) === currentMatrixId);
+                    const matrixRows = selectedMatrix ? (selectedMatrix.rows || []) : null;
+                    const days = sheet.getColumnCount() - 9; // Offset 9
+
+                    // Helper to get letter from multiple sources or calculate
+                    const getValForDay = (day: number, startPos: any) => {
+                         const startPosFunc = Number(startPos);
+                         if (isNaN(startPosFunc)) return '';
+                         
+                         if (matrixRows) {
+                              const targetRow = matrixRows.find((mr: any) => mr.start_position === startPosFunc);
+                              if (targetRow && targetRow.cells && targetRow.cells[day-1]) {
+                                  return targetRow.cells[day-1].value || '';
+                              }
+                         } else {
+                            const cycle = ['Д', 'Н', 'П', 'П']; 
+                            return cycle[(startPosFunc + day - 2) % 4]; 
+                         }
+                         return '';
+                    };
+
+                    for(let r = range.startRow; r <= range.endRow; r++) {
+                        if (r < GRID_ROW_OFFSET) continue;
+
+                        const globalVal = sheet.getCell(r, 1)?.v;
+                        const p1Val = sheet.getCell(r, 2)?.v;
+                        const p2Val = sheet.getCell(r, 3)?.v;
+                        const p3Val = sheet.getCell(r, 4)?.v;
+
+                        if (globalVal || p1Val || p2Val || p3Val) {
+                            for(let d=1; d<=days; d++) {
+                                let startPosToUse = globalVal;
+                                if (d <= currentPeriods.p1End && p1Val) startPosToUse = p1Val;
+                                else if (d > currentPeriods.p1End && d <= currentPeriods.p2End && p2Val) startPosToUse = p2Val;
+                                else if (d > currentPeriods.p2End && p3Val) startPosToUse = p3Val;
+
+                                if (startPosToUse) {
+                                    const val = getValForDay(d, startPosToUse);
+                                    // Removed check "if (val)" to ensure empty values overwrite existing cells
+                                    const c = 8 + d; // Offset fixed to match Day 1 at index 9
+                                    await commandService.executeCommand(SetRangeValuesCommand.id, {
+                                        unitId: params.unitId,
+                                        subUnitId: params.subUnitId,
+                                        range: { startRow: r, startColumn: c, endRow: r, endColumn: c },
+                                        value: { v: val }
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -519,7 +568,7 @@ export const UniverScheduleGrid = () => {
                     // If we have a Global ID
                     if (freq === 1) {
                         countStyle = SCHEDULE_TEMPLATE.countCellGreen;
-                        countVal = 0; 
+                        countVal = freq; 
                     } else if (freq > 1) {
                         countStyle = SCHEDULE_TEMPLATE.countCellRed;
                         countVal = freq;
@@ -590,8 +639,8 @@ export const UniverScheduleGrid = () => {
                             2: { w: 40 }, 3: { w: 40 }, 4: { w: 40 }, // Periods
                             5: { w: 20 }, // Spacer
                             6: { w: 40 }, // No
-                            7: { w: 220 }, // Name
-                            8: { w: 100 }, // Position
+                            7: { w: 250 }, // Name
+                            8: { w: 120 }, // Position
                         }
                     }
                 },
@@ -676,15 +725,14 @@ export const UniverScheduleGrid = () => {
                                 val = cycle[(startPosFunc + d - 2) % 4]; 
                              }
 
-                             if (val) {
-                                const c = 9 + d; // Offset 9
-                                await commandService.executeCommand(SetRangeValuesCommand.id, {
-                                    unitId: wb.getUnitId(),
-                                    subUnitId: sheet.getSheetId(),
-                                    range: { startRow: r, startColumn: c, endRow: r, endColumn: c },
-                                    value: { v: val }
-                                });
-                             }
+                             // Always write, even if empty, to overwrite old data
+                             const c = 8 + d;
+                             await commandService.executeCommand(SetRangeValuesCommand.id, {
+                                 unitId: wb.getUnitId(),
+                                 subUnitId: sheet.getSheetId(),
+                                 range: { startRow: r, startColumn: c, endRow: r, endColumn: c },
+                                 value: { v: val }
+                             });
                          }
                      }
                  }
@@ -729,7 +777,7 @@ export const UniverScheduleGrid = () => {
 
             // Read days
             for(let d=1; d<=daysInMonth; d++) {
-                const c = 9 + d; // Offset 9
+                const c = 8 + d; // Offset fixed to match Day 1 at index 9
                 const cell = sheet.getCell(r, c);
                 const val = cell?.v || '';
                 
@@ -874,10 +922,11 @@ export const UniverScheduleGrid = () => {
                     onChange={e => setPeriods(p => ({ ...p, p2End: Number(e.target.value) }))}
                     sx={{ width: 100 }}
                 />
+                {/* Auto -Fill Button 
                 <Button variant="contained" onClick={handleCalculate} color="secondary" size="small">
                     Авто-Попълване
                 </Button>
-                
+                */}
                 <Box flex={1} />
                 
                 <IconButton onClick={toggleFullscreen} color="primary" title={isFullscreen ? "Изход от цял екран" : "Цял екран"}>
