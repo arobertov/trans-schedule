@@ -36,15 +36,24 @@ export const ExcelImportButton = () => {
 
             // Robust URL construction
             const origin = window.location.origin;
-            // Handle potentially missing ID
-            const scheduleId = record?.id;
+            let scheduleId = record?.id;
             
             if (!scheduleId) {
                 throw new Error('Липсва ID на разписанието (record.id is missing)');
             }
 
-            // Construct URL without relying on ENTRYPOINT constant which might be flaky
-            const urlStr = `${origin}train_schedules/${scheduleId}/import`;
+            // Handle API Platform IRIs (e.g. if id is "/train_schedules/1")
+            if (typeof scheduleId === 'string' && scheduleId.includes('/')) {
+                const parts = scheduleId.split('/');
+                scheduleId = parts[parts.length - 1]; // Get the last part (the actual ID)
+            }
+
+            // Construct URL safely using URL object
+            // Use root-relative path to avoid origin duplication issues
+            const apiPath = `/train_schedules/${scheduleId}/import`;
+            const urlObj = new URL(apiPath, origin);
+            
+            const urlStr = urlObj.toString();
             console.log('Starting import to:', urlStr);
 
             // Add Authentication Token
@@ -56,11 +65,29 @@ export const ExcelImportButton = () => {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            await fetchHydra(urlStr, {
+            // Using native fetch to avoid fetchHydra 'matchAll' issues on some responses
+            const response = await fetch(urlStr, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(data),
             });
+
+            if (!response.ok) {
+                let errorMessage = response.statusText;
+                try {
+                    const errorJson = await response.json();
+                    if (errorJson['hydra:description']) {
+                        errorMessage = errorJson['hydra:description'];
+                    } else if (errorJson.message) {
+                        errorMessage = errorJson.message;
+                    } else if (errorJson.detail) {
+                        errorMessage = errorJson.detail;
+                    }
+                } catch (e) {
+                    // Ignore JSON parse error, use statusText
+                }
+                throw new Error(`Server returned ${response.status}: ${errorMessage}`);
+            }
 
             notify(`Успешен импорт на ${data.length} реда!`, { type: 'success' });
             refresh();

@@ -20,16 +20,37 @@ interface Props {
     height?: string;
 }
 
-// Convert "HH:mm" to decimal hours relative to 04:00
+// Convert "HH:mm" or ISO date string to decimal hours relative to 04:00
 // 04:00 -> 4.0
 // 23:59 -> 23.98
 // 00:00 -> 24.0
 // 01:00 -> 25.0
-// 03:59 -> 27.98 (if applicable, schedule implies 21h window)
 const timeToDecimal = (timeStr: string): number | null => {
     if (!timeStr) return null;
-    const [h, m] = timeStr.split(':').map(Number);
+    
+    // Handle ISO strings like "1970-01-01T14:30:00+00:00" by extracting HH:mm
+    const match = timeStr.match(/(?:T|\s|^)(\d{1,2}):(\d{2})/);
+    
+    let h = 0, m = 0;
+    if (match) {
+        h = parseInt(match[1], 10);
+        m = parseInt(match[2], 10);
+    } else {
+        // Fallback split
+        const parts = timeStr.split(':');
+        if (parts.length >= 2) {
+            h = parseInt(parts[0], 10);
+            m = parseInt(parts[1], 10);
+        } else {
+            return null;
+        }
+    }
+
+    if (isNaN(h) || isNaN(m)) return null;
+
     let val = h + m / 60;
+    // Schedule logic: Shift early morning hours (00:00 - 03:59) to > 24 for continuity
+    // Assuming schedule day starts at 04:00
     if (val < 4) {
         val += 24;
     }
