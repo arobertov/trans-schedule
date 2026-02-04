@@ -13,6 +13,8 @@ import PeopleIcon from "@mui/icons-material/People";
 import WorkIcon from "@mui/icons-material/Work";
 import PersonIcon from "@mui/icons-material/Person";
 import AddIcon from "@mui/icons-material/Add";
+import TrainIcon from "@mui/icons-material/Train";
+import TimelineIcon from "@mui/icons-material/Timeline";
 
 export const Dashboard = () => {
   const handleNavigate = (path: string) => {
@@ -47,6 +49,22 @@ export const Dashboard = () => {
       color: "#ed6c02",
       viewPath: "/admin#/users",
       addPath: "/admin#/users/create",
+    },
+    {
+      title: "Разписания",
+      description: "Управление на влакови разписания и графици",
+      icon: <TrainIcon sx={{ fontSize: 60 }} />,
+      color: "#d32f2f",
+      viewPath: "/admin#/train_schedules",
+      addPath: "/admin#/train_schedules/create",
+    },
+    {
+      title: "Диаграми (Маршрути)",
+      description: "Генериране и преглед на диаграми за движение",
+      icon: <TimelineIcon sx={{ fontSize: 60 }} />,
+      color: "#9c27b0",
+      viewPath: "/admin#/train_diagrams",
+      addPath: "/admin#/train_diagrams/create",
     },
   ];
 

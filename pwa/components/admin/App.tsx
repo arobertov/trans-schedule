@@ -36,6 +36,13 @@ import { MatrixList, MatrixCreate, MatrixShow, MatrixEdit } from "./matrices";
 import { MonthlyScheduleList, MonthlyScheduleCreate, MonthlyScheduleEdit } from "./monthly_schedules";
 import { CalendarList, CalendarCreate, CalendarShow, CalendarEdit } from "./calendars"; 
 import { defaultTheme } from 'react-admin';
+import { TrainScheduleList } from "./train_schedules/TrainScheduleList";
+import { TrainScheduleCreate } from "./train_schedules/TrainScheduleCreate";
+import { TrainScheduleEdit } from "./train_schedules/TrainScheduleEdit";
+import { TrainScheduleShow } from "./train_schedules/TrainScheduleShow";
+import { TrainScheduleLineList } from "./train_schedules/TrainScheduleLineList";
+import { TrainDiagramList } from "./train_diagrams/TrainDiagramList";
+import { TrainDiagramCreate } from "./train_diagrams/TrainDiagramCreate";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -113,6 +120,9 @@ const App = () => {
       <ResourceGuesser name="matrices" list={MatrixList} create={MatrixCreate} show={MatrixShow} edit={MatrixEdit} />
       <ResourceGuesser name="monthly_schedules" list={MonthlyScheduleList} create={MonthlyScheduleCreate} edit={MonthlyScheduleEdit} />
       <ResourceGuesser name="calendars" list={CalendarList} create={CalendarCreate} edit={CalendarEdit} show={CalendarShow} />
+      <ResourceGuesser name="train_schedules" list={TrainScheduleList} create={TrainScheduleCreate} edit={TrainScheduleEdit} show={TrainScheduleShow} />
+      <ResourceGuesser name="train_schedule_lines" list={TrainScheduleLineList} />
+      <ResourceGuesser name="train_diagrams" list={TrainDiagramList} create={TrainDiagramCreate} />
 
       <CustomRoutes>
         <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
