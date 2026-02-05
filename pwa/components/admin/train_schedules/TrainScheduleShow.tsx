@@ -8,7 +8,8 @@ import {
     Tab,
     useRecordContext,
     SimpleShowLayout,
-    useGetManyReference
+    useGetManyReference,
+    DateField
 } from 'react-admin';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { ScheduleChart } from '../graphic-schedule/ScheduleChart';
@@ -56,10 +57,10 @@ export const TrainScheduleShow = () => (
                     sort={{ field: 'train_number', order: 'ASC' }}
                 >
                     <Datagrid>
-                        <TextField source="train_number" label="Влак" />
-                        <TextField source="station_track" label="Гара/Коловоз" />
-                        <TextField source="arrival_time" label="Пристига" />
-                        <TextField source="departure_time" label="Заминава" />
+                        <TextField source="train_number" label="Влак №" />
+                        <TextField source="station_track" label="Станция №/Път №" />
+                        <DateField source="arrival_time" label="Пристига" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false }} />
+                        <DateField source="departure_time" label="Заминава" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false }} />
                     </Datagrid>
                 </ReferenceManyField>
             </Tab>
