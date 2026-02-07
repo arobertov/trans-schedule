@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import { Button } from '@mui/material';
+import { Button, Dialog, DialogTitle, DialogContent, LinearProgress, Typography, Box } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useRecordContext, useNotify, useRefresh } from 'react-admin';
 import { parseTrainScheduleExcel } from '../../../helpers/excelParser';
-import { ENTRYPOINT } from '../../../config/entrypoint';
-import { fetchHydra } from '@api-platform/admin';
 import { getToken } from '../../../jwt-frontend-auth/src/auth/authService';
 
 export const ExcelImportButton = () => {
     const record = useRecordContext();
     const notify = useNotify();
     const refresh = useRefresh();
-    const [loading, setLoading] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [statusMessage, setStatusMessage] = useState('');
+
+    const CHUNK_SIZE = 500; // Adjust chunk size as needed
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return;
@@ -23,16 +25,21 @@ export const ExcelImportButton = () => {
         }
 
         const file = e.target.files[0];
-        setLoading(true);
+        setImporting(true);
+        setProgress(0);
+        setStatusMessage('Reading file...');
 
         try {
-            const data = await parseTrainScheduleExcel(file);
+            const allData = await parseTrainScheduleExcel(file);
             
-            if (data.length === 0) {
+            if (allData.length === 0) {
                  notify('Не бяха намерени валидни данни във файла.', { type: 'warning' });
-                 setLoading(false);
+                 setImporting(false);
                  return;
             }
+
+            const totalRows = allData.length;
+            setStatusMessage(`Starting import of ${totalRows} rows...`);
 
             // Robust URL construction
             const origin = window.location.origin;
@@ -48,15 +55,9 @@ export const ExcelImportButton = () => {
                 scheduleId = parts[parts.length - 1]; // Get the last part (the actual ID)
             }
 
-            // Construct URL safely using URL object
-            // Use root-relative path to avoid origin duplication issues
             const apiPath = `/train_schedules/${scheduleId}/import`;
-            const urlObj = new URL(apiPath, origin);
-            
-            const urlStr = urlObj.toString();
-            console.log('Starting import to:', urlStr);
 
-            // Add Authentication Token
+            // Prepare headers
             const token = getToken();
             const headers: HeadersInit = {
                 'Content-Type': 'application/json'
@@ -65,64 +66,89 @@ export const ExcelImportButton = () => {
                 headers['Authorization'] = `Bearer ${token}`;
             }
 
-            // Using native fetch to avoid fetchHydra 'matchAll' issues on some responses
-            const response = await fetch(urlStr, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(data),
-            });
-
-            if (!response.ok) {
-                let errorMessage = response.statusText;
-                try {
-                    const errorJson = await response.json();
-                    if (errorJson['hydra:description']) {
-                        errorMessage = errorJson['hydra:description'];
-                    } else if (errorJson.message) {
-                        errorMessage = errorJson.message;
-                    } else if (errorJson.detail) {
-                        errorMessage = errorJson.detail;
-                    }
-                } catch (e) {
-                    // Ignore JSON parse error, use statusText
-                }
-                throw new Error(`Server returned ${response.status}: ${errorMessage}`);
+            // Chunk processing
+            let processed = 0;
+            const chunks = [];
+            for (let i = 0; i < allData.length; i += CHUNK_SIZE) {
+                chunks.push(allData.slice(i, i + CHUNK_SIZE));
             }
 
-            notify(`Успешен импорт на ${data.length} реда!`, { type: 'success' });
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                const isFirstChunk = i === 0;
+                
+                // First chunk clears the DB (append=false), subsequent chunks append (append=true)
+                const appendMode = !isFirstChunk;
+                const urlObj = new URL(apiPath, origin);
+                // "append" parameter: '1' (true) or '0' (false)
+                urlObj.searchParams.append('append', appendMode ? '1' : '0');
+                
+                setStatusMessage(`Importing batch ${i + 1} of ${chunks.length} (${chunk.length} rows)...`);
+
+                const response = await fetch(urlObj.toString(), {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(chunk),
+                });
+
+                if (!response.ok) {
+                    let errorMessage = response.statusText;
+                    try {
+                        const errorJson = await response.json();
+                        if (errorJson['hydra:description']) errorMessage = errorJson['hydra:description'];
+                        else if (errorJson.message) errorMessage = errorJson.message;
+                        else if (errorJson.detail) errorMessage = errorJson.detail;
+                    } catch (e) { /* ignore */ }
+                    throw new Error(`Server returned ${response.status}: ${errorMessage}`);
+                }
+
+                processed += chunk.length;
+                setProgress(Math.round((processed / totalRows) * 100));
+            }
+
+            setStatusMessage('Completed!');
+            notify(`Успешен импорт на ${totalRows} реда!`, { type: 'success' });
             refresh();
         } catch (error) {
             console.error('Import Error:', error);
             notify('Грешка при импорт: ' + String(error), { type: 'error' });
         } finally {
-            setLoading(false);
+            setImporting(false);
             e.target.value = ''; // Reset input
         }
     };
 
-    if (!record || !record.id) return null;
-
     return (
-        <div style={{ margin: '20px 0', border: '1px dashed #ccc', padding: '15px', borderRadius: '4px' }}>
-            <h3>Масов Импорт</h3>
+        <>
             <Button
-                variant="contained"
                 component="label"
-                color="primary"
+                variant="contained"
                 startIcon={<UploadFileIcon />}
-                disabled={loading}
+                disabled={importing}
             >
-                {loading ? 'Обработка...' : 'Качи Excel файл (Заместване)'}
+                Импорт Excel
                 <input
                     type="file"
                     hidden
-                    accept=".xlsx, .xls"
+                    accept=".xlsx,.xls"
                     onChange={handleFileUpload}
                 />
             </Button>
-            <div style={{ marginTop: '8px', fontSize: '0.9em', color: '#666' }}>
-                Файлът трябва да съдържа колони: <b>Влак</b>, <b>Коловоз на станция</b>, <b>Час на пристигане</b>, <b>Час на отпътуване</b>.
-            </div>
-        </div>
+
+            <Dialog open={importing} disableEscapeKeyDown>
+                <DialogTitle>Импортиране на разписание</DialogTitle>
+                <DialogContent sx={{ width: '400px' }}>
+                    <Box sx={{ width: '100%', mt: 2 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                            {statusMessage}
+                        </Typography>
+                        <LinearProgress variant="determinate" value={progress} />
+                        <Typography variant="body2" color="text.secondary" align="right" sx={{ mt: 1 }}>
+                            {progress}%
+                        </Typography>
+                    </Box>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 };

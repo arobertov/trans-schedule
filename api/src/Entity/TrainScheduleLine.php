@@ -18,7 +18,9 @@ use Symfony\Component\Validator\Constraints as Assert;
     normalizationContext: ['groups' => ['ts_line:read']],
     denormalizationContext: ['groups' => ['ts_line:write']],
     mercure: true,
-    paginationItemsPerPage: 100
+    paginationItemsPerPage: 100,
+    paginationClientItemsPerPage: true,
+    paginationMaximumItemsPerPage: 100000
 )]
 #[ApiFilter(SearchFilter::class, properties: [
     'train_number' => 'exact',

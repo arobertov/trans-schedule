@@ -13,6 +13,7 @@ import {
 } from 'react-admin';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { ScheduleChart } from '../graphic-schedule/ScheduleChart';
+import { TrainListAccordion } from './TrainListAccordion';
 
 const LinesPagination = () => <Pagination rowsPerPageOptions={[25, 50, 100]} />;
 
@@ -47,12 +48,15 @@ export const TrainScheduleShow = () => (
             <Tab label="Графичен График">
                  <ScheduleDiagramTab />
             </Tab>
+            <Tab label="Списък Влакове">
+                <TrainListAccordion />
+            </Tab>
             <Tab label="Таблица с данни">
                 <ReferenceManyField 
                     reference="train_schedule_lines" 
                     target="trainSchedule" 
                     pagination={<LinesPagination />}
-                    perPage={50}
+                    perPage={50} 
                     label=""
                     sort={{ field: 'train_number', order: 'ASC' }}
                 >

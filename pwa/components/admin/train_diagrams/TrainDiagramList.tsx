@@ -1,15 +1,15 @@
-import { Datagrid, List, TextField, ArrayField, SingleFieldList, ChipField, FunctionField } from "react-admin";
+import { Datagrid, List, TextField, ArrayField, SingleFieldList, ChipField, ReferenceField } from "react-admin";
 
 export const TrainDiagramList = () => (
   <List>
-    <Datagrid>
-      <TextField source="train_number" label="Влак" />
-      <TextField source="start_station" label="Начална станция" />
-      <TextField source="end_station" label="Крайна станция" />
-      <ArrayField source="intermediate_stations" label="Междинни станции">
+    <Datagrid rowClick="show">
+      <TextField source="name" label="Име" />
+      <ReferenceField source="trainSchedule" reference="train_schedules" label="Разписание">
+        <TextField source="name" />
+      </ReferenceField>
+      <ArrayField source="stations" label="Станции">
          <SingleFieldList>
-             {/* Handling array of strings directly */}
-             <FunctionField render={(record: any) => <span>{record}</span>} />
+             <ChipField source="" size="small" />
          </SingleFieldList>
       </ArrayField>
     </Datagrid>

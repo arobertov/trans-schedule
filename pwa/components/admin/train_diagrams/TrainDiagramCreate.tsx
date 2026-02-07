@@ -1,13 +1,15 @@
-import { Create, SimpleForm, TextInput, ArrayInput, SimpleFormIterator } from "react-admin";
+import { Create, SimpleForm, TextInput, ReferenceInput, SelectInput, ArrayInput, SimpleFormIterator } from "react-admin";
 
 export const TrainDiagramCreate = () => (
   <Create>
     <SimpleForm>
-      <TextInput source="train_number" label="Влак" helperText="За този влак ще бъдат автоматично изчислени Начална и Крайна станция въз основа на разписанието." fullWidth />
-      <ArrayInput source="intermediate_stations" label="Междинни станции">
+      <TextInput source="name" label="Име на диаграма" fullWidth />
+      <ReferenceInput source="trainSchedule" reference="train_schedules">
+        <SelectInput optionText="name" label="Разписание" fullWidth />
+      </ReferenceInput>
+      <ArrayInput source="stations" label="Станции (в последователност)">
         <SimpleFormIterator>
-          {/* Using empty source for array of strings */}
-          <TextInput source="" label="Станция" />
+          <TextInput source="" label="Име на станция" />
         </SimpleFormIterator>
       </ArrayInput>
     </SimpleForm>

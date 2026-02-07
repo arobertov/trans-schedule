@@ -6,6 +6,7 @@ use App\Entity\TrainSchedule;
 use App\Entity\TrainScheduleLine;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -17,26 +18,37 @@ class TrainScheduleImportController extends AbstractController
     {
     }
 
-    public function __invoke(TrainSchedule $data, Request $request): TrainSchedule
+    public function __invoke(TrainSchedule $data, Request $request): JsonResponse
     {
+        set_time_limit(0);
+        ini_set('memory_limit', '512M');
+        
         $payload = $request->toArray();
         if (!is_array($payload)) {
             throw new BadRequestHttpException('Invalid JSON payload');
         }
 
         // 1. Clear existing lines (Replace Mode)
-        // Using DQL is safer and handles constraints correctly in Doctrine lifecycle
-        $this->entityManager->createQuery('DELETE FROM App\Entity\TrainScheduleLine l WHERE l.trainSchedule = :schedule')
-            ->setParameter('schedule', $data)
-            ->execute();
+        $scheduleId = $data->getId();
+        
+        // Check for append mode (if true, do not delete existing lines)
+        $isAppend = $request->query->getBoolean('append', false);
+
+        if (!$isAppend) {
+            // Using DQL is safer and handles constraints correctly in Doctrine lifecycle
+            $this->entityManager->createQuery('DELETE FROM App\Entity\TrainScheduleLine l WHERE l.trainSchedule = :schedule')
+                ->setParameter('schedule', $data)
+                ->execute();
+        }
         
         // 2. Insert new lines
-        $batchSize = 100;
+        $batchSize = 200;
         $i = 0;
 
         foreach ($payload as $row) {
              $line = new TrainScheduleLine();
-             $line->setTrainSchedule($data);
+             // Use getReference to avoid DB query after clear()
+             $line->setTrainSchedule($this->entityManager->getReference(TrainSchedule::class, $scheduleId));
              $line->setTrainNumber((string)($row['train_number'] ?? ''));
              $line->setStationTrack((string)($row['station_track'] ?? ''));
              
@@ -60,14 +72,11 @@ class TrainScheduleImportController extends AbstractController
              if (($i++ % $batchSize) === 0) {
                  $this->entityManager->flush();
                  $this->entityManager->clear(); // Detach objects to save memory
-                 // Re-fetch the main object because clear() detached it
-                 $data = $this->entityManager->find(TrainSchedule::class, $data->getId());
              }
         }
         
         $this->entityManager->flush();
         
-        // Refresh the main object to return it with updated lines (though lines are fetched separately usually)
-        return $data;
+        return new JsonResponse(['status' => 'success', 'count' => count($payload)]);
     }
 }

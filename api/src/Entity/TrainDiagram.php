@@ -19,7 +19,7 @@ use Symfony\Component\Validator\Constraints as Assert;
     operations: [
         new Get(),
         new GetCollection(),
-        new Post(processor: TrainDiagramProcessor::class),
+        new Post(),
         new Delete()
     ],
     normalizationContext: ['groups' => ['diagram:read']],
@@ -34,72 +34,57 @@ class TrainDiagram
     #[Groups(['diagram:read'])]
     private ?int $id = null;
 
-    #[ORM\Column(length: 50)]
-    #[Assert\NotBlank(message: 'Номерът на влака е задължителен')]
+    #[ORM\Column(length: 255)]
+    #[Assert\NotBlank(message: 'Името на диаграмата е задължително')]
     #[Groups(['diagram:read', 'diagram:write'])]
-    private ?string $train_number = null;
+    private ?string $name = null;
+
+    #[ORM\ManyToOne(targetEntity: TrainSchedule::class)]
+    #[ORM\JoinColumn(nullable: false)]
+    #[Groups(['diagram:read', 'diagram:write'])]
+    private ?TrainSchedule $trainSchedule = null;
 
     #[ORM\Column(type: 'json')]
     #[Groups(['diagram:read', 'diagram:write'])]
-    private array $intermediate_stations = [];
-
-    #[ORM\Column(length: 255, nullable: true)]
-    #[Groups(['diagram:read'])]
-    private ?string $start_station = null;
-
-    #[ORM\Column(length: 255, nullable: true)]
-    #[Groups(['diagram:read'])]
-    private ?string $end_station = null;
+    private array $stations = [];
 
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getTrainNumber(): ?string
+    public function getName(): ?string
     {
-        return $this->train_number;
+        return $this->name;
     }
 
-    public function setTrainNumber(string $train_number): static
+    public function setName(string $name): static
     {
-        $this->train_number = $train_number;
+        $this->name = $name;
 
         return $this;
     }
 
-    public function getIntermediateStations(): array
+    public function getTrainSchedule(): ?TrainSchedule
     {
-        return $this->intermediate_stations;
+        return $this->trainSchedule;
     }
 
-    public function setIntermediateStations(array $intermediate_stations): static
+    public function setTrainSchedule(?TrainSchedule $trainSchedule): static
     {
-        $this->intermediate_stations = $intermediate_stations;
+        $this->trainSchedule = $trainSchedule;
 
         return $this;
     }
 
-    public function getStartStation(): ?string
+    public function getStations(): array
     {
-        return $this->start_station;
+        return $this->stations;
     }
 
-    public function setStartStation(?string $start_station): static
+    public function setStations(array $stations): static
     {
-        $this->start_station = $start_station;
-
-        return $this;
-    }
-
-    public function getEndStation(): ?string
-    {
-        return $this->end_station;
-    }
-
-    public function setEndStation(?string $end_station): static
-    {
-        $this->end_station = $end_station;
+        $this->stations = $stations;
 
         return $this;
     }

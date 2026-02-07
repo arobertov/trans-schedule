@@ -43,6 +43,7 @@ import { TrainScheduleShow } from "./train_schedules/TrainScheduleShow";
 import { TrainScheduleLineList } from "./train_schedules/TrainScheduleLineList";
 import { TrainDiagramList } from "./train_diagrams/TrainDiagramList";
 import { TrainDiagramCreate } from "./train_diagrams/TrainDiagramCreate";
+import { TrainDiagramShow } from "./train_diagrams/TrainDiagramShow";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -122,7 +123,7 @@ const App = () => {
       <ResourceGuesser name="calendars" list={CalendarList} create={CalendarCreate} edit={CalendarEdit} show={CalendarShow} />
       <ResourceGuesser name="train_schedules" list={TrainScheduleList} create={TrainScheduleCreate} edit={TrainScheduleEdit} show={TrainScheduleShow} />
       <ResourceGuesser name="train_schedule_lines" list={TrainScheduleLineList} />
-      <ResourceGuesser name="train_diagrams" list={TrainDiagramList} create={TrainDiagramCreate} />
+      <ResourceGuesser name="train_diagrams" list={TrainDiagramList} create={TrainDiagramCreate} show={TrainDiagramShow} />
 
       <CustomRoutes>
         <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
