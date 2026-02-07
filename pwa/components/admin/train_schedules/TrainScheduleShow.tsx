@@ -12,7 +12,8 @@ import {
     DateField
 } from 'react-admin';
 import { Box, CircularProgress, Typography } from '@mui/material';
-import { ScheduleChart } from '../graphic-schedule/ScheduleChart';
+// import { ScheduleChart } from '../graphic-schedule/ScheduleChart';
+import { TimeDistanceChart } from '../graphic-schedule/TimeDistanceChart';
 import { TrainListAccordion } from './TrainListAccordion';
 
 const LinesPagination = () => <Pagination rowsPerPageOptions={[25, 50, 100]} />;
@@ -26,7 +27,7 @@ const ScheduleDiagramTab = () => {
         { 
             target: 'trainSchedule', 
             id: record.id, 
-            pagination: { page: 1, perPage: 2000 }, 
+            pagination: { page: 1, perPage: 100000 }, 
             sort: { field: 'train_number', order: 'ASC' } 
         }
     );
@@ -37,7 +38,7 @@ const ScheduleDiagramTab = () => {
 
     return (
         <Box sx={{ height: '80vh', width: '100%', mt: 2 }}>
-            <ScheduleChart lines={data} height="100%" />
+            <TimeDistanceChart lines={data} height="100%" stations={[]} scheduleId={record.id} />
         </Box>
     );
 };
@@ -63,8 +64,8 @@ export const TrainScheduleShow = () => (
                     <Datagrid>
                         <TextField source="train_number" label="Влак №" />
                         <TextField source="station_track" label="Станция №/Път №" />
-                        <DateField source="arrival_time" label="Пристига" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false }} />
-                        <DateField source="departure_time" label="Заминава" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false }} />
+                        <DateField source="arrival_time" label="Пристига" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }} />
+                        <DateField source="departure_time" label="Заминава" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }} />
                     </Datagrid>
                 </ReferenceManyField>
             </Tab>

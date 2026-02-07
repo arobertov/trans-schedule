@@ -86,12 +86,12 @@ export const TrainListAccordion = () => {
                                         <TableCell>{line.station_track}</TableCell>
                                         <TableCell>
                                             {line.arrival_time ? (
-                                                <DateField record={line} source="arrival_time" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false }} />
+                                                <DateField record={line} source="arrival_time" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }} />
                                             ) : '-'}
                                         </TableCell>
                                         <TableCell>
                                             {line.departure_time ? (
-                                                <DateField record={line} source="departure_time" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false }} />
+                                                <DateField record={line} source="departure_time" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }} />
                                             ) : '-'}
                                         </TableCell>
                                     </TableRow>
