@@ -7,7 +7,6 @@ const filters = [
 export const TrainScheduleList = () => (
   <List filters={filters}>
     <Datagrid rowClick="show">
-      <TextField source="id" />
       <TextField source="name" label="Име" />
       <TextField source="description" label="Описание" />
     </Datagrid>

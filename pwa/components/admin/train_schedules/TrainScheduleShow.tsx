@@ -46,13 +46,10 @@ const ScheduleDiagramTab = () => {
 export const TrainScheduleShow = () => (
     <Show>
         <TabbedShowLayout>
-            <Tab label="Графичен График">
-                 <ScheduleDiagramTab />
-            </Tab>
-            <Tab label="Списък Влакове">
+            <Tab label="Маршрути">
                 <TrainListAccordion />
             </Tab>
-            <Tab label="Таблица с данни">
+            <Tab label="Табличен изглед">
                 <ReferenceManyField 
                     reference="train_schedule_lines" 
                     target="trainSchedule" 
@@ -68,6 +65,9 @@ export const TrainScheduleShow = () => (
                         <DateField source="departure_time" label="Заминава" showDate={false} showTime options={{ hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }} />
                     </Datagrid>
                 </ReferenceManyField>
+            </Tab>
+            <Tab label="Графичен изглед">
+                 <ScheduleDiagramTab />
             </Tab>
             <Tab label="Информация">
                 <SimpleShowLayout>

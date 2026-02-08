@@ -20,6 +20,7 @@ final class Version20260114135454 extends AbstractMigration
     public function up(Schema $schema): void
     {
         // this up() migration is auto-generated, please modify it to your needs
+        $this->addSql('DROP TABLE IF EXISTS calendars');
         $this->addSql('CREATE TABLE calendars (id INT AUTO_INCREMENT NOT NULL, year INT NOT NULL, months_data JSON NOT NULL, UNIQUE INDEX unique_year (year), PRIMARY KEY (id)) DEFAULT CHARACTER SET utf8mb4 COLLATE `utf8mb4_unicode_ci`');
     }
 

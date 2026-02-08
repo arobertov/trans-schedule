@@ -318,7 +318,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', justifyContent: 'space-between' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <TransformIcon color="primary" />
-                            <Typography>Обединяване на влакове (Турнуси)</Typography>
+                            <Typography>Обединяване на влакове</Typography>
                         </Box>
                         <Box onClick={(e) => e.stopPropagation()}>
                             <Button 

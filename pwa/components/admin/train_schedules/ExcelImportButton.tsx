@@ -126,7 +126,7 @@ export const ExcelImportButton = () => {
                 startIcon={<UploadFileIcon />}
                 disabled={importing}
             >
-                Импорт Excel
+                Импорт на график от Excel
                 <input
                     type="file"
                     hidden
@@ -134,6 +134,18 @@ export const ExcelImportButton = () => {
                     onChange={handleFileUpload}
                 />
             </Button>
+
+            <Box sx={{ mt: 1 }}>
+                <Typography variant="body2" color="text.secondary" component="div">
+                    Очаквани колони в Excel файла:
+                    <ul style={{ margin: '6px 0 0 18px' }}>
+                        <li>Влак</li>
+                        <li>Коловоз на станция</li>
+                        <li>Час на пристигане</li>
+                        <li>Час на отпътуване</li>
+                    </ul>
+                </Typography>
+            </Box>
 
             <Dialog open={importing} disableEscapeKeyDown>
                 <DialogTitle>Импортиране на разписание</DialogTitle>
