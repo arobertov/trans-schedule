@@ -19,11 +19,11 @@ import { UniverSheetsFormulaUIPlugin } from '@univerjs/sheets-formula-ui';
 import { UniverSheetsUIPlugin } from '@univerjs/sheets-ui';
 import { UniverUIPlugin } from '@univerjs/ui';
 
-import { enUS as UniverDesignEnUS } from "@univerjs/design";
-import { enUS as UniverDocsUIEnUS } from "@univerjs/docs-ui";
-import { enUS as UniverSheetsFormulaUIEnUS } from "@univerjs/sheets-formula-ui";
-import { enUS as UniverSheetsUIEnUS } from "@univerjs/sheets-ui";
-import { enUS as UniverUIEnUS } from "@univerjs/ui";
+import UniverDesignEnUS from "@univerjs/design/locale/en-US";
+import UniverDocsUIEnUS from "@univerjs/docs-ui/locale/en-US";
+import UniverSheetsFormulaUIEnUS from "@univerjs/sheets-formula-ui/locale/en-US";
+import UniverSheetsUIEnUS from "@univerjs/sheets-ui/locale/en-US";
+import UniverUIEnUS from "@univerjs/ui/locale/en-US";
 
 const SCHEDULE_TEMPLATE = {
     header: {

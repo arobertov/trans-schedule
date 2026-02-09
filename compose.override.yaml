@@ -1,3 +1,4 @@
+# compose.override.yaml
 # Development environment override
 services:
   php:
@@ -29,11 +30,12 @@ services:
     volumes:
       - ./pwa:/srv/app
       - /srv/app/node_modules # <-- ДОБАВИ ТОЗИ РЕД (анонимен volume)
+      - /srv/app/.next           # <-- ДОБАВИ ТОЗИ РЕД (кешът на Next.js)
     environment:
       API_PLATFORM_CREATE_CLIENT_ENTRYPOINT: http://php
       API_PLATFORM_CREATE_CLIENT_OUTPUT: .
       # On Linux, you may want to comment the following line for improved performance
-      WATCHPACK_POLLING: "true"
+      WATCHPACK_POLLING: "false"
 
 ###> doctrine/doctrine-bundle ###
   

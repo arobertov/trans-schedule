@@ -12,7 +12,30 @@ const nextConfig = {
     '@api-platform/admin'
   ],
   experimental: {
-    esmExternals: 'loose',
+   // Enable ESM support in Webpack 5
+   esmExternals: true,
+   // Enable Turbopack for development (optional, can be removed if not needed)
+   turbo: true,
+   // Enable Webpack 5 (should be default in Next.js 12+)
+   webpack5: true,
+   // Enable React Server Components (optional, can be removed if not needed)
+   serverComponents: true,
+   // Enable SWC minification (should be default in Next.js 12+)
+   swcMinify: true,
+   // Enable the new image optimization engine (optional, can be removed if not needed)
+   images: {
+     unoptimized: true,
+   },
+   // Enable the new font optimization engine (optional, can be removed if not needed)
+   fonts: {
+     optimize: true,
+   },
+   // Enable the new middleware engine (optional, can be removed if not needed)
+   middleware: {
+     experimental: true,
+   },
+    // Enable the new app directory (optional, can be removed if not needed)
+    appDir: true, 
   },
   webpack: (config, { isServer }) => {
     // Handle ESM packages properly
