@@ -209,9 +209,9 @@ class Employees
     #[Groups(['employee:read', 'employee:write'])]
     #[Assert\NotNull(message: 'Позицията е задължителна')]
     #[ApiProperty(
-        description: 'Длъжност/позиция',
-        readableLink: true,
-        writableLink: false
+       description: 'Длъжност/позиция',
+        readableLink: false,
+        writableLink: true
     )]
     private ?Positions $position = null;
 

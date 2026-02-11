@@ -12,6 +12,7 @@ use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 
 #[ORM\Entity(repositoryClass: PositionsRepository::class)]
 #[ApiResource(
@@ -38,6 +39,7 @@ class Positions
         minMessage: 'Името на длъжността трябва да е поне {{ limit }} символа',
         maxMessage: 'Името на длъжността не може да бъде повече от {{ limit }} символа'
     )]
+    #[ApiFilter(SearchFilter::class, strategy: 'ipartial')]
     private ?string $name = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
