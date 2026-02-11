@@ -839,11 +839,11 @@ export const UniverScheduleGrid = () => {
     return (
         <Box 
             position={isFullscreen ? "fixed" : "relative"}
-            top={isFullscreen ? 0 : undefined}
+            top={isFullscreen ? 40 : undefined}
             left={isFullscreen ? 0 : undefined}
             width={isFullscreen ? "100vw" : "100%"}
             height={isFullscreen ? "100vh" : "auto"}
-            zIndex={isFullscreen ? 1300 : 1}
+            zIndex={isFullscreen ? 9999 : 1}
             bgcolor="background.paper"
         >
             {isLoading && (
@@ -937,7 +937,7 @@ export const UniverScheduleGrid = () => {
                     Запази Промените
                 </Button>
             </Box>
-            
+            <Box></Box>
             <Box ref={containerRef} style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', border: '1px solid #ddd' }} />
             </Box>
         </Box>

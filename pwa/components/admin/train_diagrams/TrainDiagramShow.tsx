@@ -1,11 +1,8 @@
 import { 
     Show, 
     SimpleShowLayout, 
-    TextField, 
-    ReferenceField,
     useRecordContext,
     useGetManyReference,
-    useGetOne
 } from 'react-admin';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { TimeDistanceChart } from '../graphic-schedule/TimeDistanceChart';
@@ -47,7 +44,13 @@ const DiagramView = () => {
 
     return (
         <Box sx={{ height: '80vh', width: '100%', mt: 2 }}>
-            <TimeDistanceChart lines={lines} stations={stations} height="100%" title={record.name} />
+            <TimeDistanceChart 
+                lines={lines} 
+                stations={stations} 
+                height="100%" 
+                title={record.name} 
+                scheduleId={cleanScheduleId}
+            />
         </Box>
     );
 };
