@@ -81,10 +81,10 @@ export const EmployeesEdit = () => (
             sort={{ field: 'name', order: 'ASC' }}
           >
             <AutocompleteInput 
+              filterToQuery={(searchText: string) => ({ name: searchText })}
               label="Длъжност" 
               optionText="name"
               validate={validateRequired}
-              fullWidth
             />
           </ReferenceInput>
         </Grid>

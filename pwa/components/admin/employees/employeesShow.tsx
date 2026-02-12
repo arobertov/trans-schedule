@@ -1,5 +1,5 @@
 import { ShowGuesser, FieldGuesser } from "@api-platform/admin";
-import { FunctionField, ChipField, TextField, DateField } from "react-admin";
+import { FunctionField, ChipField, TextField, DateField, ReferenceField } from "react-admin";
 import { Stack, Box, Grid, Paper, Typography, Divider } from "@mui/material";
 import PersonIcon from '@mui/icons-material/Person';
 import WorkIcon from '@mui/icons-material/Work';
@@ -7,8 +7,9 @@ import ContactPhoneIcon from '@mui/icons-material/ContactPhone';
 import EmailIcon from '@mui/icons-material/Email';
 import NotesIcon from '@mui/icons-material/Notes';
 import { Link } from 'react-router-dom';
-
 export const EmployeesShow = () => (
+
+
     <ShowGuesser>
         <Box sx={{ p: 2 }}>
             <Grid container spacing={3}>
@@ -88,21 +89,17 @@ export const EmployeesShow = () => (
                         </Stack>
                         <Divider sx={{ mb: 2 }} />
                         <Stack spacing={2}>
+                            <ReferenceField source="position" reference="positions" />
                             <FunctionField
-                                label="Длъжност"
+                                label="Статус"
                                 render={(record: any) => (
-                                    <ChipField
-                                        record={{ value: record.position?.name || 'Не е зададена' }}
+                                     <ChipField
+                                        record={{ value: record.status === 'active' ? 'Активен' : 'Неактивен' }}   
                                         source="value"
-                                        color="primary"
+                                        color={record.status === 'active' ? 'success' : 'error'}
                                         variant="outlined"
                                     />
                                 )}
-                            />
-                            <ChipField 
-                                source="status" 
-                                color="primary"
-                                variant="outlined"
                             />
                         </Stack>
                     </Paper>
