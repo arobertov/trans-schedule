@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDataProvider, useNotify, useRecordContext, useUpdate } from 'react-admin';
-import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton } from '@mui/material';
-import { Fullscreen, FullscreenExit } from '@mui/icons-material';
+import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, List, ListItem, ListItemText, ListItemSecondaryAction } from '@mui/material';
+import { Fullscreen, FullscreenExit, Delete as DeleteIcon, PersonAdd } from '@mui/icons-material';
 import "@univerjs/design/lib/index.css";
 import "@univerjs/ui/lib/index.css";
 import "@univerjs/sheets-ui/lib/index.css";
@@ -179,6 +179,14 @@ export const UniverScheduleGrid = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [calendarStats, setCalendarStats] = useState<{ workDays: number, workHours: number } | null>(null);
+
+    const tempRowsRef = useRef<any[] | null>(null);
+    const [renderTrigger, setRenderTrigger] = useState(0);
+
+    // Manage Employees Dialog State
+    const [isManageOpen, setIsManageOpen] = useState(false);
+    const [allEmployees, setAllEmployees] = useState<any[]>([]);
+    const [selectedEmp, setSelectedEmp] = useState<any>(null);
 
     // Refs for accessing state inside Univer listeners
     const periodsRef = useRef(periods);
@@ -440,20 +448,109 @@ export const UniverScheduleGrid = () => {
                 } else if (positionId) {
                     try {
                         const { data: posData } = await dataProvider.getOne('positions', { id: positionId });
-                        if (isMounted && posData) positionName = posData.name;
+                        if (isMounted && posData) {
+                            positionName = posData.name;
+                        }
                     } catch (err) {
                         console.warn('Failed to fetch position details', err);
                     }
                 }
 
                 if (isMounted) {
-                    const { data } = await dataProvider.getList('employees', {
-                        filter: { position: positionId, status: 'активен' },
-                        pagination: { page: 1, perPage: 1000 },
-                        sort: { field: 'id', order: 'ASC' }
-                    });
-                    employees = data;
-                    setLoadedEmployees(data);
+                    const savedRows = tempRowsRef.current || record.schedule_rows || [];
+                    const hasSavedData = savedRows.length > 0;
+                    
+                    if (hasSavedData) {
+                        // Priority 1: Load from saved rows (Snapshot)
+                        // Extract unique employees from saved rows to preserve order and existence
+                        const savedEmployees: any[] = [];
+                        const idsToFetch: any[] = [];
+
+                        for (const row of savedRows) {
+                            if (!row.employee_id) continue;
+                            
+                            // Check if we already have this employee in our list (duplicates in rows?)
+                            // Usually 1 row per employee, but safeguard
+                            if (savedEmployees.find(e => e.id === row.employee_id)) continue;
+
+                            if (row.employee_name) {
+                                // Fast path: We have the name snapshot
+                                savedEmployees.push({
+                                    id: row.employee_id,
+                                    fullName: row.employee_name
+                                    // We don't strictly need first/last name if we have fullName for display
+                                });
+                            } else {
+                                // Legacy path: structure exists but no name saved. Need to fetch.
+                                idsToFetch.push(row.employee_id);
+                            }
+                        }
+
+                        if (idsToFetch.length > 0) {
+                            // Fetch missing details
+                             // Note: API Platform doesn't standardly support "ids" filter array in all configs, 
+                             // but we can try to fetch all active for position and match, 
+                             // OR fetch individually if count is small.
+                             // Safest is to fetch all for position (cached likely) and filter.
+                             // Or use getMany if we are sure IDs exist.
+                             try {
+                                 // Fetch all for position to be safe with filters
+                                 const { data: allPosEmployees } = await dataProvider.getList('employees', {
+                                    filter: { position: positionId }, // Don't filter by status=active, they might be inactive now!
+                                    pagination: { page: 1, perPage: 1000 }
+                                 });
+                                 
+                                 const empMap = new Map(allPosEmployees.map((e: any) => [e.id, e]));
+                                 
+                                 // Reconstruct list preserving order of savedRows
+                                 // Mix of fully saved and fetched
+                                 const finalEmployees: any[] = [];
+                                 const processedIds = new Set();
+
+                                 for (const row of savedRows) {
+                                     if (!row.employee_id || processedIds.has(row.employee_id)) continue;
+                                     processedIds.add(row.employee_id);
+
+                                     if (row.employee_name) {
+                                         finalEmployees.push({ id: row.employee_id, fullName: row.employee_name });
+                                     } else {
+                                         const fetched = empMap.get(row.employee_id);
+                                         if (fetched) {
+                                             finalEmployees.push(fetched);
+                                         } else {
+                                             // Employee might be deleted from DB entirely. 
+                                             // Fallback to "Unknown ID" or just ID
+                                             finalEmployees.push({ 
+                                                 id: row.employee_id, 
+                                                 fullName: `Deleted User #${row.employee_id}`,
+                                                 first_name: 'Deleted',
+                                                 last_name: '#' + row.employee_id
+                                             });
+                                         }
+                                     }
+                                 }
+                                 employees = finalEmployees;
+
+                             } catch(err) {
+                                 console.error("Failed to fetch legacy employee details", err);
+                                 // Fallback to just IDs?
+                                 employees = savedEmployees; // partial
+                             }
+                        } else {
+                            employees = savedEmployees;
+                        }
+
+                    } else {
+                        // Priority 2: New Schedule - Load all Active Employees
+                        const { data } = await dataProvider.getList('employees', {
+                            filter: { position: positionId, status: 'активен' },
+                            pagination: { page: 1, perPage: 1000 },
+                            sort: { field: 'id', order: 'ASC' }
+                        });
+                        employees = data;
+                    }
+                    
+                    setLoadedEmployees(employees);
                 }
             } catch(e) { console.error(e); }
 
@@ -589,7 +686,7 @@ export const UniverScheduleGrid = () => {
                 sheetData[r][5] = { v: '', s: undefined };
 
                 // --- RIGHT TABLE DATA ---
-                const fullName = [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ');
+                const fullName = emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ');
                 
                 sheetData[r][6] = { v: index + 1, s: SCHEDULE_TEMPLATE.matrixCell }; 
                 sheetData[r][7] = { v: fullName, s: SCHEDULE_TEMPLATE.employeeName };
@@ -659,9 +756,119 @@ export const UniverScheduleGrid = () => {
             isMounted = false;
             cleanupUniver();
         };
-    }, [record]); // Only depend on record
+    }, [record, renderTrigger]); // Depend on record and manual triggers
 
     /* REMOVED SEPARATE CLEANUP EFFECT */
+
+    const captureGridState = () => {
+        if (!workbookRef.current) return tempRowsRef.current || record.schedule_rows || [];
+        const sheet = workbookRef.current.getActiveSheet();
+        const daysInMonth = sheet.getColumnCount() - 9;
+        const newRows: any[] = [];
+        
+        // loadedEmployees contains current visible rows in order
+        for (let i = 0; i < loadedEmployees.length; i++) {
+            const r = i + GRID_ROW_OFFSET; 
+            const emp = loadedEmployees[i];
+            
+            // Read matrix configs from cols 1,2,3,4
+            const matrixGlobal = sheet.getCell(r, 1)?.v || '';
+            const matrixP1 = sheet.getCell(r, 2)?.v || '';
+            const matrixP2 = sheet.getCell(r, 3)?.v || '';
+            const matrixP3 = sheet.getCell(r, 4)?.v || '';
+            
+            const rowData: any = {
+                employee_id: emp.id,
+                employee_name: emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' '),
+                matrix_global: matrixGlobal,
+                matrix_p1: matrixP1,
+                matrix_p2: matrixP2,
+                matrix_p3: matrixP3,
+            };
+
+            for(let d=1; d<=daysInMonth; d++) {
+                const c = 8 + d; 
+                const cell = sheet.getCell(r, c);
+                const val = cell?.v || '';
+                
+                rowData[`day_${d}`] = val;
+
+                if (cell && cell.s) {
+                    let style = cell.s;
+                     if (typeof style === 'string' && workbookRef.current) {
+                        try {
+                             const styles = workbookRef.current.getStyles();
+                             if (styles) style = styles.get(style);
+                        } catch(e) {}
+                    }
+                    if (style) {
+                         rowData[`day_${d}_s`] = style;
+                    }
+                }
+            }
+            newRows.push(rowData);
+        }
+        return newRows;
+    };
+
+    const handleOpenManage = async () => {
+        setIsManageOpen(true);
+        try {
+            const positionId = typeof record.position === 'object' ? record.position.id : record.position;
+            const { data } = await dataProvider.getList('employees', {
+                 filter: { position: positionId, status: 'активен' },
+                 pagination: { page: 1, perPage: 1000 },
+                 sort: { field: 'first_name', order: 'ASC' }
+            });
+            const currentIds = new Set(loadedEmployees.map(e => e.id));
+            setAllEmployees(data.filter((e: any) => !currentIds.has(e.id)));
+        } catch(e) { console.error(e); }
+    };
+
+    const handleAddEmployee = async () => {
+        if (!selectedEmp) return;
+        
+        const currentRows = captureGridState();
+        
+        const newEmpName = [selectedEmp.first_name, selectedEmp.middle_name, selectedEmp.last_name].filter(Boolean).join(' ');
+        
+        // Add new row with empty data
+        const newRow = {
+             employee_id: selectedEmp.id,
+             employee_name: newEmpName
+        };
+        
+        const newRows = [...currentRows, newRow];
+        tempRowsRef.current = newRows;
+        
+        if (univerRef.current) {
+            univerRef.current.dispose();
+            univerRef.current = null;
+        }
+
+        setSelectedEmp(null);
+        setAllEmployees(prev => prev.filter(e => e.id !== selectedEmp.id));
+        setRenderTrigger(prev => prev + 1);
+    };
+
+    const handleRemoveEmployee = (empId: number) => {
+         const currentRows = captureGridState();
+         const newRows = currentRows.filter(r => r.employee_id !== empId);
+         
+         tempRowsRef.current = newRows;
+         
+         // Remove from available list if needed? Or just let it be re-fetched next time dialog opens
+         // If we remove him, he should be available to add back.
+         // We can add him to allEmployees if dialog is open, but usually this is called from dialog.
+         // If dialog is open, we can update state.
+         
+         if (univerRef.current) {
+            univerRef.current.dispose();
+            univerRef.current = null;
+        }
+        
+        setRenderTrigger(prev => prev + 1);
+    };
 
     const handleCalculate = async () => {
         if (!univerRef.current || !workbookRef.current) return;
@@ -769,6 +976,7 @@ export const UniverScheduleGrid = () => {
             
             const rowData: any = {
                 employee_id: emp.id,
+                employee_name: emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' '),
                 matrix_global: matrixGlobal,
                 matrix_p1: matrixP1,
                 matrix_p2: matrixP2,
@@ -927,6 +1135,9 @@ export const UniverScheduleGrid = () => {
                     Авто-Попълване
                 </Button>
                 */}
+                <Button variant="outlined" onClick={handleOpenManage} disabled={isLoading} startIcon={<PersonAdd />} sx={{ mr: 1 }}>
+                    Служители
+                </Button>
                 <Box flex={1} />
                 
                 <IconButton onClick={toggleFullscreen} color="primary" title={isFullscreen ? "Изход от цял екран" : "Цял екран"}>
@@ -939,6 +1150,47 @@ export const UniverScheduleGrid = () => {
             </Box>
             <Box></Box>
             <Box ref={containerRef} style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', border: '1px solid #ddd' }} />
+            
+            <Dialog open={isManageOpen} onClose={() => setIsManageOpen(false)} maxWidth="md" fullWidth>
+                <DialogTitle>Управление на служители</DialogTitle>
+                <DialogContent>
+                    <Box sx={{ mb: 2, mt: 1, display: 'flex', gap: 1 }}>
+                        <Autocomplete
+                            sx={{ flex: 1 }}
+                            options={allEmployees}
+                            getOptionLabel={(option) => `${option.first_name} ${option.middle_name || ''} ${option.last_name}`}
+                            value={selectedEmp}
+                            onChange={(e, v) => setSelectedEmp(v)}
+                            renderInput={(params) => <TextField {...params} label="Избери служител за добавяне" />}
+                        />
+                        <Button onClick={handleAddEmployee} disabled={!selectedEmp} variant="contained">
+                            Добави
+                        </Button>
+                    </Box>
+                    <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>Включени в графика ({loadedEmployees.length})</Typography>
+                    <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
+                        <List dense>
+                            {loadedEmployees.map((emp) => (
+                                <ListItem key={emp.id} divider>
+                                    <ListItemText 
+                                        primary={emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ')} 
+                                        secondary={`ID: ${emp.id}`}
+                                    />
+                                    <ListItemSecondaryAction>
+                                        <IconButton edge="end" aria-label="delete" onClick={() => handleRemoveEmployee(emp.id)} color="error">
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    </ListItemSecondaryAction>
+                                </ListItem>
+                            ))}
+                        </List>
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setIsManageOpen(false)}>Затвори</Button>
+                </DialogActions>
+            </Dialog>
+
             </Box>
         </Box>
     );
