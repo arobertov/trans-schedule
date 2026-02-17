@@ -26,7 +26,7 @@
         {
             "label": "Symfony: Run Migrations",
             "type": "shell",
-            "command": "docker-compose exec php php bin/console doctrine:migrations:migrate --no-interaction",
+            "command": "docker compose exec php php bin/console doctrine:migrations:migrate --no-interaction",
             "group": "build",
             "presentation": {
                 "reveal": "always",

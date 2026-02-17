@@ -1,13 +1,13 @@
-# Copilot Instructions - trans-shcheduler
+# Copilot Instructions - trans-scheduler
 
 ## Project Architecture
 
 This is a **full-stack API Platform application** with three main components:
 - **API (Backend)**: Symfony 7.2 + API Platform 4 + Doctrine ORM + MySQL 8.0 (PHP 8.4, FrankenPHP runtime)
-- **PWA (Frontend)**: Next.js 15 + React 19 + TypeScript + API Platform Admin
+- **PWA (Frontend)**: Next.js 15 + React 19 + TypeScript + API Platform Admin (React Admin 5)
 - **E2E Tests**: Playwright for end-to-end testing
 
-All services run in **Docker containers** via `compose.yaml`. The API serves both REST/GraphQL APIs and the PWA frontend through FrankenPHP/Caddy with Mercure support for real-time updates.
+All services run in **Docker containers** via `compose.yaml`. FrankenPHP serves the API on ports 80/443 with Mercure for real-time updates. MySQL runs on port 3307 (host)/3306 (container).
 
 ## Critical Developer Workflows
 
@@ -20,14 +20,14 @@ docker compose exec php php bin/console <command>
 
 Use VS Code tasks (already configured) for common operations:
 - **Clear Cache**: `Symfony: Clear Cache (dev)`
-- **Make Migration**: `Symfony: Make Migration` → `docker-compose exec php php bin/console doctrine:migrations:diff`
-- **Run Migrations**: `Symfony: Run Migrations` → `docker-compose exec php php bin/console doctrine:migrations:migrate --no-interaction`
+- **Make Migration**: `Symfony: Make Migration` → `docker compose exec php php bin/console doctrine:migrations:diff`
+- **Run Migrations**: `Symfony: Run Migrations` → `docker compose exec php php bin/console doctrine:migrations:migrate --no-interaction`
 
 ### Database Workflow
 1. Modify entity in `api/src/Entity/`
-2. Generate migration: `docker-compose exec php php bin/console doctrine:migrations:diff`
+2. Generate migration: `docker compose exec php php bin/console doctrine:migrations:diff`
 3. Review migration in `api/migrations/`
-4. Apply: `docker-compose exec php php bin/console doctrine:migrations:migrate --no-interaction`
+4. Apply: `docker compose exec php php bin/console doctrine:migrations:migrate --no-interaction`
 5. Validate: `docker compose exec -T php bin/console doctrine:schema:validate`
 
 ### Testing
@@ -53,6 +53,8 @@ private ?string $first_name = null;
 - **Serialization Groups**: `normalizationContext: ['groups' => ['entity:read']]` and `denormalizationContext: ['groups' => ['entity:write']]`
 - **Validation**: Bulgarian messages using Symfony validators
 - **Naming**: Snake_case for properties (`first_name`, `middle_name`, `last_name`)
+- **Pagination**: Set in `#[ApiResource()]` with `paginationItemsPerPage: 30, paginationClientEnabled: true`
+- **Lifecycle Callbacks**: Use `#[ORM\HasLifecycleCallbacks]` for automatic created_at/updated_at timestamps
 
 Example from `Employees.php`:
 ```php
@@ -63,7 +65,32 @@ Example from `Employees.php`:
     denormalizationContext: ['groups' => ['employee:write']],
     paginationItemsPerPage: 30
 )]
+#[ApiFilter(SearchFilter::class, properties: ['first_name' => 'partial', 'status' => 'exact'])]
+#[ApiFilter(OrderFilter::class, properties: ['first_name', 'created_at'])]
+#[ORM\HasLifecycleCallbacks]
+class Employees { ... }
 ```
+
+### API Filters & Search
+Entities use `SearchFilter` and `OrderFilter` for filtering/sorting:
+```php
+#[ApiFilter(
+    SearchFilter::class, 
+    properties: [
+        'first_name' => 'partial',    // LIKE %value%
+        'status' => 'exact',           // Exact match
+        'position' => 'exact'          // Relation filter
+    ]
+)]
+#[ApiFilter(
+    OrderFilter::class, 
+    properties: ['first_name', 'created_at'],
+    arguments: ['orderParameterName' => 'order']
+)]
+```
+- Use `'partial'` for text search (case-insensitive)
+- Use `'exact'` for enums, IDs, and relations
+- `OrderFilter` enables sorting: `?order[first_name]=asc`
 
 ### Enums
 Use PHP 8.4 backed enums with **Bulgarian values**:
@@ -78,11 +105,52 @@ enum Status: string {
 ### State Processors
 Custom logic for API operations goes in `api/src/State/` (e.g., `UserPasswordHasher.php` for password hashing before persistence).
 
+Attach processors to specific operations in the entity:
+```php
+#[ApiResource(
+    operations: [
+        new Post(processor: UserPasswordHasher::class),
+        new Put(processor: UserPasswordHasher::class),
+        new Patch(processor: UserPasswordHasher::class),
+    ]
+)]
+class User { ... }
+```
+
+State processors implement `ProcessorInterface` and receive the decorated persistence processor:
+```php
+final readonly class UserPasswordHasher implements ProcessorInterface
+{
+    public function __construct(
+        private ProcessorInterface $processor,  // Decorated processor
+        private UserPasswordHasherInterface $passwordHasher
+    ) { }
+    
+    public function process(mixed $data, Operation $operation, ...): User
+    {
+        // Custom logic before persistence
+        if ($data->getPlainPassword()) {
+            $hashedPassword = $this->passwordHasher->hashPassword(...);
+            $data->setPassword($hashedPassword);
+        }
+        // Call decorated processor to persist
+        return $this->processor->process($data, $operation, ...);
+    }
+}
+```
+
+### Services
+Complex business logic goes in `api/src/Service/`:
+- `CalendarService.php` - Calendar generation logic
+- `MatrixGenerator.php` - Matrix generation algorithms
+
+Use services in State Processors or custom Controllers for non-CRUD operations.
+
 ### Authentication Flow
 - **Backend**: JWT authentication via `lexik/jwt-authentication-bundle`
 - **Endpoint**: `POST /auth` with `{username, password}` returns JWT token
 - **Frontend**: Token stored in localStorage via `pwa/jwt-frontend-auth/src/auth/authService.ts`
-- **Admin**: API Platform Admin (`pwa/components/admin/`) uses custom `authProvider.tsx`
+- **Admin**: API Platform Admin (`pwa/components/admin/`) uses custom `authProvider.ts`
 
 Security config in `api/config/packages/security.yaml`:
 - `/auth`, `/docs`, `/admin` are `PUBLIC_ACCESS`
@@ -103,6 +171,26 @@ Security config in `api/config/packages/security.yaml`:
 - `jwt-frontend-auth/` - Reusable JWT auth module
 - `pages/admin/` - Admin interface routes
 - `pages/_app.tsx` - Next.js app wrapper with global layout
+
+#### Frontend Component Structure
+Each resource has its own directory with standard components (all with Bulgarian labels):
+```
+components/admin/employees/
+  ├── employeesList.tsx       # List view with DatagridConfigurable
+  ├── employeesCreate.tsx     # Create form
+  ├── EmployeesEdit.tsx       # Edit form  
+  ├── employeesShow.tsx       # Detail view
+  └── EmployeesBulkImport.tsx # Bulk import from Excel/CSV
+```
+
+Example patterns from `employeesList.tsx`:
+- Use `FieldGuesser` for auto-generated fields from API metadata
+- Custom `ListActions` with `SelectColumnsButton`, `CreateButton`, bulk import button
+- Custom `Empty` component with Bulgarian messages
+- `FunctionField` for computed fields (row numbers, relations)
+- All labels in Bulgarian: `label="Име"`, `label="Добави служител"`
+
+Frontend connects to API via `NEXT_PUBLIC_ENTRYPOINT` env var (set to `http://php` in compose.yaml).
 
 ### Infrastructure
 - `compose.yaml` - Docker services (php, pwa, database=MySQL 8.0)

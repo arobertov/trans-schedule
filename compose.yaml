@@ -1,6 +1,7 @@
 #compose.yaml
 services:
   php:
+    #entrypoint: ["tail", "-f", "/dev/null"]
     image: ${IMAGES_PREFIX:-}app-php
     depends_on:
       - database
