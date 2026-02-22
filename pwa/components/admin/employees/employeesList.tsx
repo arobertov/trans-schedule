@@ -7,11 +7,16 @@ import {
     CreateButton,
     Button,
     List,
-    DatagridConfigurable
+    DatagridConfigurable,
+    ReferenceField,
+    FilterList,
+    FilterListItem,
+    useGetList
 } from "react-admin";
 import { Link } from 'react-router-dom';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
-import { Box, Typography } from '@mui/material';
+import WorkIcon from '@mui/icons-material/Work';
+import { Box, Typography, Card, CardContent } from '@mui/material';
 
 const ListActions = () => (
     <TopToolbar>
@@ -57,10 +62,35 @@ const Empty = () => (
     </Box>
 );
 
+const PositionFilters = () => {
+    const { data: positions = [] } = useGetList('positions', {
+        pagination: { page: 1, perPage: 1000 },
+        sort: { field: 'name', order: 'ASC' },
+    });
+
+    return (
+        <Card sx={{ order: -1, mr: 2, mt: 6, width: 260 }}>
+            <CardContent>
+                <FilterList label="Длъжности" icon={<WorkIcon />}>
+                    <FilterListItem label="Всички" value={{ position: undefined }} />
+                    {positions.map((position: any) => (
+                        <FilterListItem
+                            key={position.id}
+                            label={position.name || `Длъжност #${position.id}`}
+                            value={{ position: position['@id'] ?? position.id }}
+                        />
+                    ))}
+                </FilterList>
+            </CardContent>
+        </Card>
+    );
+};
+
 export const EmployeesList = () => (
     <List
         actions={<ListActions />}
         empty={<Empty />}
+        aside={<PositionFilters />}
     >
         <DatagridConfigurable>
             <FunctionField
@@ -82,10 +112,9 @@ export const EmployeesList = () => (
             <FieldGuesser source="created_at" label="Добавен на" />
             <FieldGuesser source="updated_at" label="Обновен на" />
             <FieldGuesser source="status" label="Статус" />
-            <FunctionField
-                label="Длъжност"
-                render={(record: any) => record.position?.name || '-'}
-            />
+            <ReferenceField source="position" reference="positions" label="Длъжност" link={false} emptyText="-">
+                <FieldGuesser source="name" />
+            </ReferenceField>
         </DatagridConfigurable>
     </List>
 );
