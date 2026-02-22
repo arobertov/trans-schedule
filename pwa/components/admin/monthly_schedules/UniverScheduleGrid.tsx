@@ -82,7 +82,7 @@ const SCHEDULE_TEMPLATE = {
     weekendCell: {
         ht: 2,
         vt: 2,
-        fill: { rgb: '#fff5f5' },
+        bg: { rgb: '#a7a7a7' },
         ff: 'Sofia Sans',
         bd: {
             b: { style: 1, color: { rgb: '#f0f0f0' } },
@@ -122,6 +122,16 @@ const SCHEDULE_TEMPLATE = {
          ht: 2, vt: 2, ff: 'Sofia Sans',
          bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
     },
+        periodInputSingle: {
+            bg: { rgb: '#E8F5E9' },
+            ht: 2, vt: 2, ff: 'Sofia Sans',
+            bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
+        },
+        periodInputDuplicate: {
+            bg: { rgb: '#FFEBEE' },
+            ht: 2, vt: 2, ff: 'Sofia Sans',
+            bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
+        },
     // New Document Styles
     title: {
         fs: 18,
@@ -154,6 +164,14 @@ const SCHEDULE_TEMPLATE = {
 };
 
 const GRID_ROW_OFFSET = 5; // Rows reserved for header info (0-4)
+const PJM_POSITION_NAME = 'машинист пжм';
+const MATRIX_COLORS_STORAGE_KEY = 'monthlySchedule.matrixValidationColors';
+const AUTO_SAVE_DEBOUNCE_MS = 900;
+const MATRIX_COLOR_DEFAULTS = {
+    single: '#E8F5E9',
+    duplicate: '#FFEBEE',
+    weekend: '#A7A7A7',
+};
 
 
 export const UniverScheduleGrid = () => {
@@ -178,7 +196,25 @@ export const UniverScheduleGrid = () => {
     const [loadedEmployees, setLoadedEmployees] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
     const [calendarStats, setCalendarStats] = useState<{ workDays: number, workHours: number } | null>(null);
+    const [showMatrixConfig, setShowMatrixConfig] = useState(true);
+    const [matrixValidationColors, setMatrixValidationColors] = useState(() => {
+        if (typeof window === 'undefined') return MATRIX_COLOR_DEFAULTS;
+        try {
+            const raw = window.localStorage.getItem(MATRIX_COLORS_STORAGE_KEY);
+            if (!raw) return MATRIX_COLOR_DEFAULTS;
+
+            const parsed = JSON.parse(raw);
+            return {
+                single: parsed?.single || MATRIX_COLOR_DEFAULTS.single,
+                duplicate: parsed?.duplicate || MATRIX_COLOR_DEFAULTS.duplicate,
+                weekend: parsed?.weekend || MATRIX_COLOR_DEFAULTS.weekend,
+            };
+        } catch {
+            return MATRIX_COLOR_DEFAULTS;
+        }
+    });
 
     const tempRowsRef = useRef<any[] | null>(null);
     const [renderTrigger, setRenderTrigger] = useState(0);
@@ -192,10 +228,327 @@ export const UniverScheduleGrid = () => {
     const periodsRef = useRef(periods);
     const matrixDataRef = useRef(matrixData);
     const selectedMatrixIdRef = useRef(selectedMatrixId);
+    const isApplyingPeriodStylesRef = useRef(false);
+    const showMatrixConfigRef = useRef(showMatrixConfig);
+    const loadedEmployeesRef = useRef(loadedEmployees);
+    const matrixValidationColorsRef = useRef(matrixValidationColors);
+    const colorApplyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const canUseSetRangeCommandRef = useRef<boolean | null>(null);
+    const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const autoSaveStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isSavingRef = useRef(false);
+    const hasPendingAutoSaveRef = useRef(false);
 
     useEffect(() => { periodsRef.current = periods; }, [periods]);
     useEffect(() => { matrixDataRef.current = matrixData; }, [matrixData]);
     useEffect(() => { selectedMatrixIdRef.current = selectedMatrixId; }, [selectedMatrixId]);
+    useEffect(() => { showMatrixConfigRef.current = showMatrixConfig; }, [showMatrixConfig]);
+    useEffect(() => { loadedEmployeesRef.current = loadedEmployees; }, [loadedEmployees]);
+    useEffect(() => { matrixValidationColorsRef.current = matrixValidationColors; }, [matrixValidationColors]);
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(MATRIX_COLORS_STORAGE_KEY, JSON.stringify(matrixValidationColors));
+        } catch {}
+    }, [matrixValidationColors]);
+
+    useEffect(() => {
+        return () => {
+            if (autoSaveTimeoutRef.current) {
+                clearTimeout(autoSaveTimeoutRef.current);
+                autoSaveTimeoutRef.current = null;
+            }
+
+            if (autoSaveStatusTimeoutRef.current) {
+                clearTimeout(autoSaveStatusTimeoutRef.current);
+                autoSaveStatusTimeoutRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (autoSaveStatusTimeoutRef.current) {
+            clearTimeout(autoSaveStatusTimeoutRef.current);
+            autoSaveStatusTimeoutRef.current = null;
+        }
+
+        if (autoSaveStatus === 'saved' || autoSaveStatus === 'error') {
+            autoSaveStatusTimeoutRef.current = setTimeout(() => {
+                setAutoSaveStatus('idle');
+            }, 2500);
+        }
+
+        return () => {
+            if (autoSaveStatusTimeoutRef.current) {
+                clearTimeout(autoSaveStatusTimeoutRef.current);
+                autoSaveStatusTimeoutRef.current = null;
+            }
+        };
+    }, [autoSaveStatus]);
+
+    const getValidationMatrixStyle = (colorHex: string) => ({
+        ...SCHEDULE_TEMPLATE.matrixInputCell,
+        bg: { rgb: colorHex }
+    });
+
+    const getWeekendCellStyle = (colorHex: string) => ({
+        ...SCHEDULE_TEMPLATE.weekendCell,
+        bg: { rgb: colorHex }
+    });
+
+    const getGlobalColumnConflictSummary = (sheet: any, lastEmployeeRow: number) => {
+        const globalValues = new Set<string>();
+        const p1Values = new Set<string>();
+        const p2Values = new Set<string>();
+        const p3Values = new Set<string>();
+
+        for (let r = GRID_ROW_OFFSET; r <= lastEmployeeRow; r++) {
+            const g = String(sheet.getCell(r, 0)?.v ?? '').trim();
+            const p1 = String(sheet.getCell(r, 1)?.v ?? '').trim();
+            const p2 = String(sheet.getCell(r, 2)?.v ?? '').trim();
+            const p3 = String(sheet.getCell(r, 3)?.v ?? '').trim();
+
+            if (g) globalValues.add(g);
+            if (p1) p1Values.add(p1);
+            if (p2) p2Values.add(p2);
+            if (p3) p3Values.add(p3);
+        }
+
+        const globalVsP1 = new Set<string>(Array.from(globalValues).filter(v => p1Values.has(v)));
+        const globalVsP2 = new Set<string>(Array.from(globalValues).filter(v => p2Values.has(v)));
+        const globalVsP3 = new Set<string>(Array.from(globalValues).filter(v => p3Values.has(v)));
+
+        return { globalValues, p1Values, p2Values, p3Values, globalVsP1, globalVsP2, globalVsP3 };
+    };
+
+    const hasAnyGlobalColumnConflict = (summary: {
+        globalVsP1: Set<string>;
+        globalVsP2: Set<string>;
+        globalVsP3: Set<string>;
+    }) => summary.globalVsP1.size > 0 || summary.globalVsP2.size > 0 || summary.globalVsP3.size > 0;
+
+    const buildGlobalConflictMessage = (summary: {
+        globalVsP1: Set<string>;
+        globalVsP2: Set<string>;
+        globalVsP3: Set<string>;
+    }) => {
+        const parts: string[] = [];
+
+        if (summary.globalVsP1.size > 0) {
+            const sample = Array.from(summary.globalVsP1).slice(0, 3).join(', ');
+            parts.push(`Global↔P1 [${sample}]`);
+        }
+        if (summary.globalVsP2.size > 0) {
+            const sample = Array.from(summary.globalVsP2).slice(0, 3).join(', ');
+            parts.push(`Global↔P2 [${sample}]`);
+        }
+        if (summary.globalVsP3.size > 0) {
+            const sample = Array.from(summary.globalVsP3).slice(0, 3).join(', ');
+            parts.push(`Global↔P3 [${sample}]`);
+        }
+
+        return parts.join('; ');
+    };
+
+    const setCellValueSafely = async (
+        commandService: any,
+        unitId: string,
+        subUnitId: string,
+        sheet: any,
+        row: number,
+        column: number,
+        value: any,
+        style?: any
+    ) => {
+        if (canUseSetRangeCommandRef.current !== false) {
+            try {
+                await commandService.executeCommand(SetRangeValuesCommand.id, {
+                    unitId,
+                    subUnitId,
+                    range: { startRow: row, startColumn: column, endRow: row, endColumn: column },
+                    value: style !== undefined ? { v: value, s: style } : { v: value }
+                });
+                canUseSetRangeCommandRef.current = true;
+                return;
+            } catch (err: any) {
+                const message = String(err?.message ?? err ?? '');
+                if (message.includes('not registered')) {
+                    canUseSetRangeCommandRef.current = false;
+                } else {
+                    console.warn('SetRangeValuesCommand failed, applying direct cell fallback.', err);
+                }
+            }
+        }
+
+        try {
+            const currentCell = sheet?.getCell?.(row, column) ?? {};
+            const nextCell = { ...(currentCell || {}) };
+
+            if (value !== undefined) nextCell.v = value;
+            if (style !== undefined) nextCell.s = style;
+
+            if (typeof sheet?.setCell === 'function') {
+                sheet.setCell(row, column, nextCell);
+                return;
+            }
+
+            if (currentCell && typeof currentCell === 'object') {
+                if (value !== undefined) currentCell.v = value;
+                if (style !== undefined) currentCell.s = style;
+            }
+        } catch (fallbackErr) {
+            console.warn('Direct cell fallback failed.', fallbackErr);
+        }
+    };
+
+    const applyMatrixFrequencyStyles = async (
+        commandService: any,
+        unitId: string,
+        subUnitId: string,
+        sheet: any,
+        lastEmployeeRow: number,
+        matrixColumns: number[] = [0, 1, 2, 3]
+    ) => {
+        const globalConflictSummary = getGlobalColumnConflictSummary(sheet, lastEmployeeRow);
+
+        for (const col of matrixColumns) {
+            const counts = new Map<string, number>();
+
+            for (let r = GRID_ROW_OFFSET; r <= lastEmployeeRow; r++) {
+                const raw = String(sheet.getCell(r, col)?.v ?? '').trim();
+                if (raw) {
+                    counts.set(raw, (counts.get(raw) || 0) + 1);
+                }
+            }
+
+            for (let r = GRID_ROW_OFFSET; r <= lastEmployeeRow; r++) {
+                const currentValue = sheet.getCell(r, col)?.v ?? '';
+                const key = String(currentValue ?? '').trim();
+
+                const globalConflict = key
+                    ? (col === 0
+                        ? globalConflictSummary.p1Values.has(key)
+                            || globalConflictSummary.p2Values.has(key)
+                            || globalConflictSummary.p3Values.has(key)
+                        : globalConflictSummary.globalValues.has(key))
+                    : false;
+
+                let style = SCHEDULE_TEMPLATE.matrixInputCell;
+                if (key) {
+                    const freq = counts.get(key) || 0;
+                    style = freq === 1 && !globalConflict
+                        ? getValidationMatrixStyle(matrixValidationColorsRef.current.single)
+                        : getValidationMatrixStyle(matrixValidationColorsRef.current.duplicate);
+                }
+
+                await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, col, currentValue, style);
+            }
+        }
+    };
+
+    const applyWeekendStyles = async (
+        commandService: any,
+        unitId: string,
+        subUnitId: string,
+        sheet: any,
+        lastEmployeeRow: number,
+        firstDayCol: number,
+        daysInMonth: number,
+        year: number,
+        month: number
+    ) => {
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(year, month - 1, d);
+            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+            if (!isWeekend) continue;
+
+            const c = firstDayCol + d - 1;
+            for (let r = GRID_ROW_OFFSET; r <= lastEmployeeRow; r++) {
+                const cell = sheet.getCell(r, c);
+                const currentValue = cell?.v ?? '';
+                let style = cell?.s;
+
+                if (typeof style === 'string' && workbookRef.current) {
+                    try {
+                        const styles = workbookRef.current.getStyles();
+                        if (styles) style = styles.get(style);
+                    } catch (e) {}
+                }
+
+                const mergedStyle = {
+                    ...(style || SCHEDULE_TEMPLATE.normalCell),
+                    bg: { rgb: matrixValidationColorsRef.current.weekend }
+                };
+
+                await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, c, currentValue, mergedStyle);
+            }
+        }
+    };
+
+    const getEmployeeDisplayName = (emp: any) => {
+        if (emp?.fullName) return String(emp.fullName).trim();
+        return [emp?.first_name, emp?.middle_name, emp?.last_name].filter(Boolean).join(' ').trim();
+    };
+
+    const sortEmployeesByName = (employees: any[]) => {
+        return [...employees].sort((a, b) => getEmployeeDisplayName(a).localeCompare(getEmployeeDisplayName(b), 'bg', { sensitivity: 'base' }));
+    };
+
+    const getPositionColumnWidth = (positionName: string) => {
+        const text = String(positionName ?? '').trim();
+        const estimated = Math.max(120, Math.ceil(text.length * 8.5) + 24);
+        return Math.min(estimated, 420);
+    };
+
+    const getNameColumnWidth = (employees: any[]) => {
+        const longestNameLength = employees.reduce((max, emp) => {
+            const nameLength = getEmployeeDisplayName(emp).length;
+            return Math.max(max, nameLength);
+        }, 24);
+
+        const estimated = Math.max(250, Math.ceil(longestNameLength * 8.5) + 28);
+        return Math.min(estimated, 560);
+    };
+
+    const isPjmPositionName = (name: any) => String(name ?? '').trim().toLowerCase() === PJM_POSITION_NAME;
+
+    useEffect(() => {
+        const positionName = typeof record?.position === 'object' ? record.position?.name : '';
+        if (positionName) {
+            setShowMatrixConfig(isPjmPositionName(positionName));
+        }
+    }, [record?.id, record?.position]);
+
+    const resolveMatrixRowByNumber = (matrixRows: any[] | null, rawValue: any) => {
+        const normalized = String(rawValue ?? '').trim();
+        if (!normalized) {
+            return { targetRow: null, rowNumber: null, invalidReason: '' };
+        }
+
+        const rowNumber = Number(normalized);
+        if (!Number.isInteger(rowNumber) || rowNumber < 1) {
+            return {
+                targetRow: null,
+                rowNumber: null,
+                invalidReason: `невалиден номер "${normalized}"`
+            };
+        }
+
+        if (!matrixRows || matrixRows.length === 0) {
+            return { targetRow: null, rowNumber, invalidReason: '' };
+        }
+
+        const targetRow = matrixRows.find((mr: any) => Number(mr.row) === rowNumber) || matrixRows[rowNumber - 1];
+        if (!targetRow) {
+            return {
+                targetRow: null,
+                rowNumber,
+                invalidReason: `ред №${rowNumber} е извън диапазона (1-${matrixRows.length})`
+            };
+        }
+
+        return { targetRow, rowNumber, invalidReason: '' };
+    };
 
     useEffect(() => {
         if (!record || !record.year || !record.month) return;
@@ -217,7 +570,7 @@ export const UniverScheduleGrid = () => {
             }
         })
         .catch(err => console.error("Failed to fetch calendar", err));
-    }, [dataProvider, record]);
+    }, [dataProvider, record?.year, record?.month]);
 
     useEffect(() => {
         if (!record || !record.year || !record.month) return;
@@ -239,7 +592,7 @@ export const UniverScheduleGrid = () => {
         .catch(e => console.log("No matrix found", e));
 
         return () => { isMounted = false; };
-    }, [dataProvider, record]);
+    }, [dataProvider, record?.year, record?.month]);
     
     useEffect(() => {
         let isMounted = true;
@@ -260,6 +613,7 @@ export const UniverScheduleGrid = () => {
     // Init Univer & Load Data
     useEffect(() => {
         if (!containerRef.current || !record) return;
+        setIsLoading(true);
         
         // Prevent double initialization
         if (univerRef.current) return;
@@ -301,96 +655,79 @@ export const UniverScheduleGrid = () => {
         const univerInstanceService = injector.get(IUniverInstanceService);
 
         commandService.onCommandExecuted(async (command: any) => {
-            if (command.id === SetRangeValuesCommand.id) {
-                const params = command.params;
-                const range = params.range;
-                
-                if (!range) return;
+            const params = command?.params;
+            const range = params?.range;
 
-                // 1. Avoid infinite loop: if update is strictly on Col 0, ignore
-                if (range.startColumn === 0 && range.endColumn === 0) return;
+            if (!range || !params?.unitId || !params?.subUnitId) return;
+            if (isApplyingPeriodStylesRef.current) return;
 
-                const wb = univerInstanceService.getUnit(params.unitId);
-                const sheet = wb?.getSheetBySheetId(params.subUnitId);
-                if (!sheet) return;
-                
-                // 2. React if update touches Col 1 (Global) - Update Counts
-                if (range.startColumn <= 1 && range.endColumn >= 1) {
-                    const rowCount = sheet.getRowCount(); // includes headers
-                    
-                    // First pass: Count frequencies for Global Column (Index 1)
-                    const counts = new Map<string, number>();
-                    
-                    for(let r = GRID_ROW_OFFSET; r < rowCount; r++) {
-                        const cell = sheet.getCell(r, 1);
-                        const val = cell?.v ? String(cell.v) : '';
-                        if (val) {
-                             counts.set(val, (counts.get(val) || 0) + 1);
-                        }
-                    }
+            const wb = univerInstanceService.getUnit(params.unitId);
+            const sheet = wb?.getSheetBySheetId(params.subUnitId);
+            if (!sheet) return;
 
-                    // Second pass: Update Column 0 where needed
-                    for(let r = GRID_ROW_OFFSET; r < rowCount; r++) {
-                        const cellGlobal = sheet.getCell(r, 1);
-                        const globalVal = cellGlobal?.v ? String(cellGlobal.v) : '';
-                        
-                        let newCount = 0;
-                        let newStyle = SCHEDULE_TEMPLATE.countCellPink;
+            scheduleAutoSave();
 
-                        if (globalVal) {
-                            const freq = counts.get(globalVal) || 0;
-                            if (freq === 1) {
-                                newStyle = SCHEDULE_TEMPLATE.countCellGreen;
-                                newCount = 1;
-                            } else if (freq > 1) {
-                                newStyle = SCHEDULE_TEMPLATE.countCellRed;
-                                newCount = freq;
-                            }
-                        }
+                const isMatrixMode = showMatrixConfigRef.current;
+                if (!isMatrixMode) return;
+                const employeeRowsCount = loadedEmployeesRef.current.length;
+                const lastEmployeeRow = GRID_ROW_OFFSET + employeeRowsCount - 1;
+                if (employeeRowsCount <= 0) return;
 
-                        await commandService.executeCommand(SetRangeValuesCommand.id, {
-                            unitId: params.unitId,
-                            subUnitId: params.subUnitId,
-                            range: { startRow: r, startColumn: 0, endRow: r, endColumn: 0 },
-                            value: { v: newCount, s: newStyle }
-                        });
+                // 2. React if update touches Global/P1/P2/P3 (Cols 0-3) - Update frequency colors per column
+                if (range.startColumn <= 3 && range.endColumn >= 0) {
+                    isApplyingPeriodStylesRef.current = true;
+                    try {
+                        await applyMatrixFrequencyStyles(commandService, params.unitId, params.subUnitId, sheet, lastEmployeeRow, [0, 1, 2, 3]);
+                    } finally {
+                        isApplyingPeriodStylesRef.current = false;
                     }
                 }
 
-                // 3. Auto-fill schedule if update touches Matrix Inputs (Cols 1-4)
-                if (range.endColumn >= 1 && range.startColumn <= 4) {
+                // 3. Auto-fill schedule if update touches Matrix Inputs (Cols 0-3)
+                if (range.endColumn >= 0 && range.startColumn <= 3) {
                     const currentMatrixData = matrixDataRef.current;
                     const currentMatrixId = selectedMatrixIdRef.current;
                     const currentPeriods = periodsRef.current;
+                    const invalidMatrixRefs = new Set<string>();
 
                     const selectedMatrix = currentMatrixData.find(m => String(m.id) === currentMatrixId);
                     const matrixRows = selectedMatrix ? (selectedMatrix.rows || []) : null;
-                    const days = sheet.getColumnCount() - 9; // Offset 9
+                    const firstDayCol = 8;
+                    const days = sheet.getColumnCount() - firstDayCol;
 
                     // Helper to get letter from multiple sources or calculate
-                    const getValForDay = (day: number, startPos: any) => {
-                         const startPosFunc = Number(startPos);
-                         if (isNaN(startPosFunc)) return '';
-                         
+                    const getValForDay = (day: number, startPos: any, sheetRowIndex: number) => {
+                        const normalized = String(startPos ?? '').trim();
+                        if (!normalized) return '';
+
+                        const startPosFunc = Number(normalized);
+
                          if (matrixRows) {
-                              const targetRow = matrixRows.find((mr: any) => mr.start_position === startPosFunc);
-                              if (targetRow && targetRow.cells && targetRow.cells[day-1]) {
-                                  return targetRow.cells[day-1].value || '';
+                              const { targetRow, invalidReason } = resolveMatrixRowByNumber(matrixRows, startPos);
+                              if (invalidReason) {
+                                  invalidMatrixRefs.add(`служител ${sheetRowIndex}: ${invalidReason}`);
+                                  return '';
+                              }
+
+                              if (targetRow && targetRow.cells && targetRow.cells[day - 1]) {
+                                  return targetRow.cells[day - 1].value || '';
                               }
                          } else {
-                            const cycle = ['Д', 'Н', 'П', 'П']; 
-                            return cycle[(startPosFunc + day - 2) % 4]; 
+                            const cycle = ['Д', 'Н', ' ', ' '];
+                            return cycle[(startPosFunc + day - 2) % 4];
                          }
                          return '';
                     };
 
-                    for(let r = range.startRow; r <= range.endRow; r++) {
-                        if (r < GRID_ROW_OFFSET) continue;
+                    const startRow = Math.max(range.startRow, GRID_ROW_OFFSET);
+                    const endRow = Math.min(range.endRow, lastEmployeeRow);
 
-                        const globalVal = sheet.getCell(r, 1)?.v;
-                        const p1Val = sheet.getCell(r, 2)?.v;
-                        const p2Val = sheet.getCell(r, 3)?.v;
-                        const p3Val = sheet.getCell(r, 4)?.v;
+                    for(let r = startRow; r <= endRow; r++) {
+
+                        const globalVal = sheet.getCell(r, 0)?.v;
+                        const p1Val = sheet.getCell(r, 1)?.v;
+                        const p2Val = sheet.getCell(r, 2)?.v;
+                        const p3Val = sheet.getCell(r, 3)?.v;
 
                         if (globalVal || p1Val || p2Val || p3Val) {
                             for(let d=1; d<=days; d++) {
@@ -399,22 +736,27 @@ export const UniverScheduleGrid = () => {
                                 else if (d > currentPeriods.p1End && d <= currentPeriods.p2End && p2Val) startPosToUse = p2Val;
                                 else if (d > currentPeriods.p2End && p3Val) startPosToUse = p3Val;
 
-                                if (startPosToUse) {
-                                    const val = getValForDay(d, startPosToUse);
+                                const hasMatrixInput = String(startPosToUse ?? '').trim() !== '';
+                                if (hasMatrixInput) {
+                                    const val = getValForDay(d, startPosToUse, r - GRID_ROW_OFFSET + 1);
                                     // Removed check "if (val)" to ensure empty values overwrite existing cells
-                                    const c = 8 + d; // Offset fixed to match Day 1 at index 9
-                                    await commandService.executeCommand(SetRangeValuesCommand.id, {
-                                        unitId: params.unitId,
-                                        subUnitId: params.subUnitId,
-                                        range: { startRow: r, startColumn: c, endRow: r, endColumn: c },
-                                        value: { v: val }
-                                    });
+                                    const c = firstDayCol + d - 1;
+                                    await setCellValueSafely(commandService, params.unitId, params.subUnitId, sheet, r, c, val);
                                 }
                             }
                         }
                     }
+
+                    if (invalidMatrixRefs.size > 0) {
+                        const preview = Array.from(invalidMatrixRefs).slice(0, 3).join('; ');
+                        notify(`Има невалидни стойности в номер на ред: ${preview}`, { type: 'warning' });
+                    }
+
+                    const globalConflictSummary = getGlobalColumnConflictSummary(sheet, lastEmployeeRow);
+                    if (hasAnyGlobalColumnConflict(globalConflictSummary)) {
+                        notify(`Конфликт между колони (Global и P1/P2/P3): ${buildGlobalConflictMessage(globalConflictSummary)}`, { type: 'warning' });
+                    }
                 }
-            }
         });
 
         // Cleanup function for THIS specific useEffect execution
@@ -550,6 +892,7 @@ export const UniverScheduleGrid = () => {
                         employees = data;
                     }
                     
+                    employees = sortEmployeesByName(employees);
                     setLoadedEmployees(employees);
                 }
             } catch(e) { console.error(e); }
@@ -560,19 +903,20 @@ export const UniverScheduleGrid = () => {
             const year = record.year;
             const month = record.month; 
             const daysInMonth = new Date(year, month, 0).getDate();
+            const isMatrixMode = isPjmPositionName(positionName);
+            setShowMatrixConfig(isMatrixMode);
+            const firstDayCol = isMatrixMode ? 8 : 3;
+            const positionColumnWidth = getPositionColumnWidth(positionName);
+            const nameColumnWidth = getNameColumnWidth(employees);
 
             // Structure:
-            // 0: Count (Calc)
-            // 1: Global (No)
-            // 2: P1 (I)
-            // 3: P2 (II)
-            // 4: P3 (III)
-            // 5: Spacer
-            // 6: No
-            // 7: Name
-            // 8: Position
-            // 9..: Days
-            const headers = ['Брой', 'Global', 'P1', 'P2', 'P3', '', '№', 'Служител', 'Длъжност'];
+            // Matrix mode:
+            // 0: Global, 1: P1, 2: P2, 3: P3, 4: Spacer, 5: No, 6: Name, 7: Position, 8..: Days
+            // Non-matrix mode:
+            // 0: No, 1: Name, 2: Position, 3..: Days
+            const headers = isMatrixMode
+                ? ['Global', 'P1', 'P2', 'P3', '', '№', 'Служител', 'Длъжност']
+                : ['№', 'Служител', 'Длъжност'];
             for(let i=1; i<=daysInMonth; i++) headers.push(String(i));
             const totalCols = headers.length;
 
@@ -595,48 +939,70 @@ export const UniverScheduleGrid = () => {
             };
             mergeData.push({ startRow: 1, endRow: 1, startColumn: totalCols - 5, endColumn: totalCols - 1 });
 
-            // Row 2: "Add row matrix" (Left) 
-            sheetData[2] = {
-                0: { v: 'Добави ред от матрицата', s: SCHEDULE_TEMPLATE.leftTableHeader }
-            };
-            mergeData.push({ startRow: 2, endRow: 2, startColumn: 0, endColumn: 4 });
+            if (isMatrixMode) {
+                // Row 2: "Add row matrix" (Left)
+                sheetData[2] = {
+                    0: { v: 'Добави ред от матрица', s: SCHEDULE_TEMPLATE.leftTableHeader }
+                };
+                mergeData.push({ startRow: 2, endRow: 2, startColumn: 0, endColumn: 3});
 
-            // Row 3: "Whole month" / "Periods" (Left)
-            sheetData[3] = {};
-            sheetData[3][0] = { v: 'За целия месец', s: SCHEDULE_TEMPLATE.leftTableHeader };
-            sheetData[3][2] = { v: 'Периоди:', s: SCHEDULE_TEMPLATE.leftTableHeader };
-            mergeData.push({ startRow: 3, endRow: 3, startColumn: 0, endColumn: 1 });   // "Whole month" spans 2 cols
-            mergeData.push({ startRow: 3, endRow: 3, startColumn: 2, endColumn: 4 }); // Periods spans 3 cols
+                // Row 3: "Whole month" / "Periods" (Left)
+                sheetData[3] = {};
+                sheetData[3][0] = { v: 'Цял месец', s: SCHEDULE_TEMPLATE.leftTableHeader };
+                sheetData[3][1] = { v: 'Периоди:', s: SCHEDULE_TEMPLATE.leftTableHeader };
+                mergeData.push({ startRow: 3, endRow: 3, startColumn: 1, endColumn: 3 });
+            }
 
             // Row 4: Grid Headers
             const headerRowIdx = GRID_ROW_OFFSET - 1; // 4
-            sheetData[headerRowIdx] = {
-                // Left
-                0: { v: 'Брой повторения', s: SCHEDULE_TEMPLATE.leftTableHeader },
-                1: { v: 'Ред №', s: { ...SCHEDULE_TEMPLATE.leftTableHeader, fill: { rgb: '#ccc' } } },
-                2: { v: 'I', s: SCHEDULE_TEMPLATE.leftTableHeader },
-                3: { v: 'II', s: SCHEDULE_TEMPLATE.leftTableHeader },
-                4: { v: 'III', s: SCHEDULE_TEMPLATE.leftTableHeader },
-                
-                // Right
-                6: { v: '№', s: SCHEDULE_TEMPLATE.header },
-                7: { v: 'Име, Презиме, Фамилия', s: SCHEDULE_TEMPLATE.header },
-                8: { v: 'Длъжност', s: SCHEDULE_TEMPLATE.header },
-            };
+            sheetData[headerRowIdx] = isMatrixMode
+                ? {
+                    0: { v: 'Ред №', s: { ...SCHEDULE_TEMPLATE.leftTableHeader, fill: { rgb: '#ccc' } } },
+                    1: { v: 'I', s: SCHEDULE_TEMPLATE.leftTableHeader },
+                    2: { v: 'II', s: SCHEDULE_TEMPLATE.leftTableHeader },
+                    3: { v: 'III', s: SCHEDULE_TEMPLATE.leftTableHeader },
+                    5: { v: '№', s: SCHEDULE_TEMPLATE.header },
+                    6: { v: 'Име, Презиме, Фамилия', s: SCHEDULE_TEMPLATE.header },
+                    7: { v: 'Длъжност', s: SCHEDULE_TEMPLATE.header },
+                }
+                : {
+                    0: { v: '№', s: SCHEDULE_TEMPLATE.header },
+                    1: { v: 'Име, Презиме, Фамилия', s: SCHEDULE_TEMPLATE.header },
+                    2: { v: 'Длъжност', s: SCHEDULE_TEMPLATE.header },
+                };
             
             for(let i=1; i<=daysInMonth; i++) {
-                sheetData[headerRowIdx][8+i] = { v: String(i), s: SCHEDULE_TEMPLATE.header };
+                sheetData[headerRowIdx][firstDayCol - 1 + i] = { v: String(i), s: SCHEDULE_TEMPLATE.header };
             }
 
-            // Calculation for Frequencies (Global Only)
+            // Calculation for Frequencies (Global/P1/P2/P3)
             const savedRows = record.schedule_rows || [];
-            const idCounts = new Map<string, number>();
+            const globalCounts = new Map<string, number>();
+            const p1Counts = new Map<string, number>();
+            const p2Counts = new Map<string, number>();
+            const p3Counts = new Map<string, number>();
             savedRows.forEach((r: any) => {
                 if(r.matrix_global) {
-                    const k = String(r.matrix_global);
-                    idCounts.set(k, (idCounts.get(k) || 0) + 1);
+                    const k = String(r.matrix_global).trim();
+                    if (k) globalCounts.set(k, (globalCounts.get(k) || 0) + 1);
+                }
+                if (r.matrix_p1) {
+                    const k = String(r.matrix_p1).trim();
+                    if (k) p1Counts.set(k, (p1Counts.get(k) || 0) + 1);
+                }
+                if (r.matrix_p2) {
+                    const k = String(r.matrix_p2).trim();
+                    if (k) p2Counts.set(k, (p2Counts.get(k) || 0) + 1);
+                }
+                if (r.matrix_p3) {
+                    const k = String(r.matrix_p3).trim();
+                    if (k) p3Counts.set(k, (p3Counts.get(k) || 0) + 1);
                 }
             });
+            const globalValueSet = new Set<string>(Array.from(globalCounts.keys()));
+            const p1ValueSet = new Set<string>(Array.from(p1Counts.keys()));
+            const p2ValueSet = new Set<string>(Array.from(p2Counts.keys()));
+            const p3ValueSet = new Set<string>(Array.from(p3Counts.keys()));
 
             // Rows
             employees.forEach((emp, index) => {
@@ -651,60 +1017,71 @@ export const UniverScheduleGrid = () => {
                 const mp2 = existing?.matrix_p2 || '';
                 const mp3 = existing?.matrix_p3 || '';
 
-                // Calculate frequency (Global only)
-                let freq = 0;
-                if(mg) {
-                     freq = idCounts.get(String(mg)) || 0;
-                }
-                
-                // Determine Count Cell Style
-                let countStyle = SCHEDULE_TEMPLATE.countCellPink;
-                let countVal = 0;
-                
-                if (mg) {
-                    // If we have a Global ID
-                    if (freq === 1) {
-                        countStyle = SCHEDULE_TEMPLATE.countCellGreen;
-                        countVal = freq; 
-                    } else if (freq > 1) {
-                        countStyle = SCHEDULE_TEMPLATE.countCellRed;
-                        countVal = freq;
-                    }
-                } else {
-                     // Empty - Pink
-                     countStyle = SCHEDULE_TEMPLATE.countCellPink;
-                     countVal = 0;
-                }
+                const mp1Key = String(mp1 ?? '').trim();
+                const mp2Key = String(mp2 ?? '').trim();
+                const mp3Key = String(mp3 ?? '').trim();
+                const mgKey = String(mg ?? '').trim();
+                const hasGlobalConflict = !!mgKey && (p1ValueSet.has(mgKey) || p2ValueSet.has(mgKey) || p3ValueSet.has(mgKey));
 
-                sheetData[r][0] = { v: countVal, s: countStyle };
-                sheetData[r][1] = { v: mg, s: SCHEDULE_TEMPLATE.matrixInputCell };
-                sheetData[r][2] = { v: mp1, s: SCHEDULE_TEMPLATE.matrixInputCell };
-                sheetData[r][3] = { v: mp2, s: SCHEDULE_TEMPLATE.matrixInputCell };
-                sheetData[r][4] = { v: mp3, s: SCHEDULE_TEMPLATE.matrixInputCell };
-                
-                // Col 5 Spacer
-                sheetData[r][5] = { v: '', s: undefined };
+                const mgStyle = mgKey
+                    ? ((globalCounts.get(mgKey) || 0) === 1 && !hasGlobalConflict
+                        ? getValidationMatrixStyle(matrixValidationColors.single)
+                        : getValidationMatrixStyle(matrixValidationColors.duplicate))
+                    : SCHEDULE_TEMPLATE.matrixInputCell;
 
-                // --- RIGHT TABLE DATA ---
+                const mp1Style = mp1Key
+                    ? ((p1Counts.get(mp1Key) || 0) === 1 && !globalValueSet.has(mp1Key)
+                        ? getValidationMatrixStyle(matrixValidationColors.single)
+                        : getValidationMatrixStyle(matrixValidationColors.duplicate))
+                    : SCHEDULE_TEMPLATE.matrixInputCell;
+                const mp2Style = mp2Key
+                    ? ((p2Counts.get(mp2Key) || 0) === 1 && !globalValueSet.has(mp2Key)
+                        ? getValidationMatrixStyle(matrixValidationColors.single)
+                        : getValidationMatrixStyle(matrixValidationColors.duplicate))
+                    : SCHEDULE_TEMPLATE.matrixInputCell;
+                const mp3Style = mp3Key
+                    ? ((p3Counts.get(mp3Key) || 0) === 1 && !globalValueSet.has(mp3Key)
+                        ? getValidationMatrixStyle(matrixValidationColors.single)
+                        : getValidationMatrixStyle(matrixValidationColors.duplicate))
+                    : SCHEDULE_TEMPLATE.matrixInputCell;
+
                 const fullName = emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ');
-                
-                sheetData[r][6] = { v: index + 1, s: SCHEDULE_TEMPLATE.matrixCell }; 
-                sheetData[r][7] = { v: fullName, s: SCHEDULE_TEMPLATE.employeeName };
-                sheetData[r][8] = { v: positionName, s: SCHEDULE_TEMPLATE.description };
+                const fullNameDisplay = `  ${fullName}`;
+                const positionDisplay = `  ${positionName}`;
+
+                if (isMatrixMode) {
+                    sheetData[r][0] = { v: mg, s: mgStyle };
+                    sheetData[r][1] = { v: mp1, s: mp1Style };
+                    sheetData[r][2] = { v: mp2, s: mp2Style };
+                    sheetData[r][3] = { v: mp3, s: mp3Style };
+                    sheetData[r][4] = { v: '', s: undefined };
+                    sheetData[r][5] = { v: index + 1, s: SCHEDULE_TEMPLATE.matrixCell };
+                    sheetData[r][6] = { v: fullNameDisplay, s: SCHEDULE_TEMPLATE.employeeName };
+                    sheetData[r][7] = { v: positionDisplay, s: SCHEDULE_TEMPLATE.description };
+                } else {
+                    sheetData[r][0] = { v: index + 1, s: SCHEDULE_TEMPLATE.matrixCell };
+                    sheetData[r][1] = { v: fullNameDisplay, s: SCHEDULE_TEMPLATE.employeeName };
+                    sheetData[r][2] = { v: positionDisplay, s: SCHEDULE_TEMPLATE.description };
+                }
                 
                 // Days
                 for(let d=1; d<=daysInMonth; d++) {
-                    const c = 8 + d; // Shifted: 0-8 occupied. Day 1 is 9.
+                    const c = firstDayCol - 1 + d;
                     
                     const date = new Date(year, month-1, d);
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                     
                     const savedStyle = existing?.[`day_${d}_s`];
-                    const templateStyle = isWeekend ? SCHEDULE_TEMPLATE.weekendCell : SCHEDULE_TEMPLATE.normalCell;
+                    const templateStyle = isWeekend ? getWeekendCellStyle(matrixValidationColors.weekend) : SCHEDULE_TEMPLATE.normalCell;
+                    const finalStyle = savedStyle
+                        ? (isWeekend
+                            ? { ...savedStyle, bg: { rgb: matrixValidationColors.weekend } }
+                            : savedStyle)
+                        : templateStyle;
 
                     sheetData[r][c] = { 
                         v: existing?.[`day_${d}`] || '',
-                        s: savedStyle || templateStyle
+                        s: finalStyle
                     };
                 }
             });
@@ -729,16 +1106,21 @@ export const UniverScheduleGrid = () => {
                         mergeData: mergeData,
                         columnCount: headers.length,
                         rowCount: employees.length + GRID_ROW_OFFSET + 3, 
-                        freeze: { xSplit: 9, ySplit: GRID_ROW_OFFSET }, // Freeze at Day 1 (Col 9)
-                        columnData: {
-                            0: { w: 80 }, // Count
-                            1: { w: 50 }, // Global
-                            2: { w: 40 }, 3: { w: 40 }, 4: { w: 40 }, // Periods
-                            5: { w: 20 }, // Spacer
-                            6: { w: 40 }, // No
-                            7: { w: 250 }, // Name
-                            8: { w: 120 }, // Position
-                        }
+                        freeze: { xSplit: firstDayCol, ySplit: GRID_ROW_OFFSET },
+                        columnData: isMatrixMode
+                            ? {
+                                0: { w: 50 },
+                                1: { w: 40 }, 2: { w: 40 }, 3: { w: 40 },
+                                4: { w: 20 },
+                                5: { w: 40 },
+                                6: { w: nameColumnWidth },
+                                7: { w: positionColumnWidth },
+                            }
+                            : {
+                                0: { w: 40 },
+                                1: { w: nameColumnWidth },
+                                2: { w: positionColumnWidth },
+                            }
                     }
                 },
                 locale: LocaleType.EN_US,
@@ -756,26 +1138,87 @@ export const UniverScheduleGrid = () => {
             isMounted = false;
             cleanupUniver();
         };
-    }, [record, renderTrigger]); // Depend on record and manual triggers
+    }, [record?.id, renderTrigger]); // Depend on schedule id and manual triggers
+
+    useEffect(() => {
+        if (!univerRef.current || !workbookRef.current || !record?.year || !record?.month) return;
+
+        if (colorApplyTimeoutRef.current) {
+            clearTimeout(colorApplyTimeoutRef.current);
+        }
+
+        colorApplyTimeoutRef.current = setTimeout(() => {
+            const sheet = workbookRef.current?.getActiveSheet();
+            if (!sheet || !workbookRef.current) return;
+
+            const employeeRowsCount = loadedEmployeesRef.current.length;
+            if (employeeRowsCount <= 0) return;
+            const lastEmployeeRow = GRID_ROW_OFFSET + employeeRowsCount - 1;
+            const isMatrixMode = showMatrixConfigRef.current;
+            const firstDayCol = isMatrixMode ? 8 : 3;
+            const daysInMonth = sheet.getColumnCount() - firstDayCol;
+
+            const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
+
+            (async () => {
+                isApplyingPeriodStylesRef.current = true;
+                try {
+                    if (isMatrixMode) {
+                        await applyMatrixFrequencyStyles(
+                            commandService,
+                            workbookRef.current.getUnitId(),
+                            sheet.getSheetId(),
+                            sheet,
+                            lastEmployeeRow
+                        );
+                    }
+
+                    await applyWeekendStyles(
+                        commandService,
+                        workbookRef.current.getUnitId(),
+                        sheet.getSheetId(),
+                        sheet,
+                        lastEmployeeRow,
+                        firstDayCol,
+                        daysInMonth,
+                        record.year,
+                        record.month
+                    );
+                } finally {
+                    isApplyingPeriodStylesRef.current = false;
+                }
+            })();
+        }, 180);
+
+        return () => {
+            if (colorApplyTimeoutRef.current) {
+                clearTimeout(colorApplyTimeoutRef.current);
+                colorApplyTimeoutRef.current = null;
+            }
+        };
+    }, [matrixValidationColors, showMatrixConfig, record]);
 
     /* REMOVED SEPARATE CLEANUP EFFECT */
 
     const captureGridState = () => {
         if (!workbookRef.current) return tempRowsRef.current || record.schedule_rows || [];
         const sheet = workbookRef.current.getActiveSheet();
-        const daysInMonth = sheet.getColumnCount() - 9;
+        const isMatrixMode = showMatrixConfigRef.current;
+        const firstDayCol = isMatrixMode ? 8 : 3;
+        const daysInMonth = sheet.getColumnCount() - firstDayCol;
         const newRows: any[] = [];
+        const employees = loadedEmployeesRef.current;
         
         // loadedEmployees contains current visible rows in order
-        for (let i = 0; i < loadedEmployees.length; i++) {
+        for (let i = 0; i < employees.length; i++) {
             const r = i + GRID_ROW_OFFSET; 
-            const emp = loadedEmployees[i];
+            const emp = employees[i];
             
-            // Read matrix configs from cols 1,2,3,4
-            const matrixGlobal = sheet.getCell(r, 1)?.v || '';
-            const matrixP1 = sheet.getCell(r, 2)?.v || '';
-            const matrixP2 = sheet.getCell(r, 3)?.v || '';
-            const matrixP3 = sheet.getCell(r, 4)?.v || '';
+            // Read matrix configs from cols 0,1,2,3 only in matrix mode
+            const matrixGlobal = isMatrixMode ? (sheet.getCell(r, 0)?.v || '') : '';
+            const matrixP1 = isMatrixMode ? (sheet.getCell(r, 1)?.v || '') : '';
+            const matrixP2 = isMatrixMode ? (sheet.getCell(r, 2)?.v || '') : '';
+            const matrixP3 = isMatrixMode ? (sheet.getCell(r, 3)?.v || '') : '';
             
             const rowData: any = {
                 employee_id: emp.id,
@@ -787,7 +1230,7 @@ export const UniverScheduleGrid = () => {
             };
 
             for(let d=1; d<=daysInMonth; d++) {
-                const c = 8 + d; 
+                const c = firstDayCol - 1 + d;
                 const cell = sheet.getCell(r, c);
                 const val = cell?.v || '';
                 
@@ -809,6 +1252,87 @@ export const UniverScheduleGrid = () => {
             newRows.push(rowData);
         }
         return newRows;
+    };
+
+    const persistSchedule = async (silent: boolean = false) => {
+        if (!record?.id || !workbookRef.current) return;
+
+        const employees = loadedEmployeesRef.current;
+        if (employees.length === 0) {
+            if (!silent) {
+                notify('No employee data loaded to map rows.', { type: 'warning' });
+            }
+            return;
+        }
+
+        const payload = {
+            position: typeof record.position === 'object' ? record.position['@id'] : record.position,
+            year: record.year,
+            month: record.month,
+            schedule_rows: captureGridState(),
+            status: record.status || 'чернова',
+            working_days: calendarStats ? calendarStats.workDays : record.working_days,
+            working_hours: calendarStats ? calendarStats.workHours : record.working_hours,
+        };
+
+        await new Promise<void>((resolve, reject) => {
+            update('monthly_schedules', {
+                id: record.id,
+                data: payload,
+                previousData: record
+            }, {
+                onSuccess: () => resolve(),
+                onError: (error: any) => reject(error)
+            });
+        });
+
+        if (!silent) {
+            notify('Графикът е запазен успешно', { type: 'success' });
+        }
+    };
+
+    const runAutoSave = async () => {
+        if (isSavingRef.current) {
+            hasPendingAutoSaveRef.current = true;
+            setAutoSaveStatus('pending');
+            return;
+        }
+
+        isSavingRef.current = true;
+        setAutoSaveStatus('saving');
+        try {
+            await persistSchedule(true);
+            setAutoSaveStatus('saved');
+        } catch (error: any) {
+            notify(`Авто-запазването неуспешно: ${error?.message || 'неизвестна грешка'}`, { type: 'error' });
+            setAutoSaveStatus('error');
+        } finally {
+            isSavingRef.current = false;
+
+            if (hasPendingAutoSaveRef.current) {
+                hasPendingAutoSaveRef.current = false;
+                if (autoSaveTimeoutRef.current) {
+                    clearTimeout(autoSaveTimeoutRef.current);
+                }
+                autoSaveTimeoutRef.current = setTimeout(() => {
+                    void runAutoSave();
+                }, AUTO_SAVE_DEBOUNCE_MS);
+            }
+        }
+    };
+
+    const scheduleAutoSave = () => {
+        if (!record?.id || !workbookRef.current) return;
+        if (loadedEmployeesRef.current.length === 0) return;
+        setAutoSaveStatus('pending');
+
+        if (autoSaveTimeoutRef.current) {
+            clearTimeout(autoSaveTimeoutRef.current);
+        }
+
+        autoSaveTimeoutRef.current = setTimeout(() => {
+            void runAutoSave();
+        }, AUTO_SAVE_DEBOUNCE_MS);
     };
 
     const handleOpenManage = async () => {
@@ -872,12 +1396,17 @@ export const UniverScheduleGrid = () => {
 
     const handleCalculate = async () => {
         if (!univerRef.current || !workbookRef.current) return;
+        if (!showMatrixConfigRef.current) {
+            notify('Попълването от матрица е достъпно само за длъжност машинист ПЖМ.', { type: 'warning' });
+            return;
+        }
         
         const wb = workbookRef.current;
         const sheet = wb.getActiveSheet();
         
-        const rowCount = sheet.getRowCount();
-        // Skip header (row 0)
+        const employeeRowsCount = loadedEmployees.length;
+        if (employeeRowsCount <= 0) return;
+        const lastEmployeeRow = GRID_ROW_OFFSET + employeeRowsCount - 1;
         
         // This is a Placeholder for the "Pattern Logic"
         // Since we don't have the explicit mapping of Pattern Columns yet,
@@ -896,17 +1425,20 @@ export const UniverScheduleGrid = () => {
              notify("Избраната матрица няма данни.", { type: 'warning' });
         }
 
+        const invalidMatrixRefs = new Set<string>();
+
         const updates: any[] = [];
 
-        for(let r=GRID_ROW_OFFSET; r<rowCount; r++) {
-             // Read Matrix Cols: 1,2,3,4 (Indices)
-             const globalVal = sheet.getCell(r, 1)?.v;
-             const p1Val = sheet.getCell(r, 2)?.v;
-             const p2Val = sheet.getCell(r, 3)?.v;
-             const p3Val = sheet.getCell(r, 4)?.v;
+        for(let r = GRID_ROW_OFFSET; r <= lastEmployeeRow; r++) {
+             // Read Matrix Cols: 0,1,2,3 (Indices)
+             const globalVal = sheet.getCell(r, 0)?.v;
+             const p1Val = sheet.getCell(r, 1)?.v;
+             const p2Val = sheet.getCell(r, 2)?.v;
+             const p3Val = sheet.getCell(r, 3)?.v;
              
              if (globalVal || p1Val || p2Val || p3Val) {
-                 const days = sheet.getColumnCount() - 9; // Offset 9
+                 const firstDayCol = 8;
+                 const days = sheet.getColumnCount() - firstDayCol;
                  for(let d=1; d<=days; d++) {
                      let startPosToUse = globalVal;
                      // Logic for dates...
@@ -914,127 +1446,77 @@ export const UniverScheduleGrid = () => {
                      else if (d > periods.p1End && d <= periods.p2End && p2Val) startPosToUse = p2Val;
                      else if (d > periods.p2End && p3Val) startPosToUse = p3Val;
                      
-                     if (startPosToUse) {
-                         const startPosFunc = Number(startPosToUse);
-                         if (!isNaN(startPosFunc)) {
-                             let val = '';
-                             
-                             if (matrixRows) {
-                                  // Find the row in the pre-calculated matrix corresponding to startPosFunc
-                                  const targetRow = matrixRows.find((mr: any) => mr.start_position === startPosFunc);
-                                  if (targetRow && targetRow.cells && targetRow.cells[d-1]) {
-                                      // Matrix cells are 0-indexed, d is 1-indexed date
-                                      val = targetRow.cells[d-1].value || '';
-                                  }
-                             } else {
-                                // Fallback (Legacy)
-                                const cycle = ['Д', 'Н', 'П', 'П']; 
-                                val = cycle[(startPosFunc + d - 2) % 4]; 
-                             }
+                     const hasMatrixInput = String(startPosToUse ?? '').trim() !== '';
+                     if (hasMatrixInput) {
+                         let val = '';
 
-                             // Always write, even if empty, to overwrite old data
-                             const c = 8 + d;
-                             await commandService.executeCommand(SetRangeValuesCommand.id, {
-                                 unitId: wb.getUnitId(),
-                                 subUnitId: sheet.getSheetId(),
-                                 range: { startRow: r, startColumn: c, endRow: r, endColumn: c },
-                                 value: { v: val }
-                             });
+                         if (matrixRows) {
+                              // Use explicit matrix row number (1-based), independent of matrix start_position
+                              const { targetRow, invalidReason } = resolveMatrixRowByNumber(matrixRows, startPosToUse);
+                              if (invalidReason) {
+                                  invalidMatrixRefs.add(`служител ${r - GRID_ROW_OFFSET + 1}: ${invalidReason}`);
+                                  continue;
+                              }
+
+                              if (targetRow && targetRow.cells && targetRow.cells[d-1]) {
+                                  // Matrix cells are 0-indexed, d is 1-indexed date
+                                  val = targetRow.cells[d-1].value || '';
+                              }
+                         } else {
+                            // Fallback (Legacy)
+                            const startPosFunc = Number(startPosToUse);
+                            if (isNaN(startPosFunc)) {
+                                invalidMatrixRefs.add(`служител ${r - GRID_ROW_OFFSET + 1}: невалиден номер "${String(startPosToUse).trim()}"`);
+                                continue;
+                            }
+                            const cycle = ['Д', 'Н', 'П', 'П']; 
+                            val = cycle[(startPosFunc + d - 2) % 4]; 
                          }
+
+                         // Always write, even if empty, to overwrite old data
+                         const c = firstDayCol + d - 1;
+                         await setCellValueSafely(commandService, wb.getUnitId(), sheet.getSheetId(), sheet, r, c, val);
                      }
                  }
              }
         }
+
+        if (invalidMatrixRefs.size > 0) {
+            const preview = Array.from(invalidMatrixRefs).slice(0, 3).join('; ');
+            notify(`Графикът е попълнен частично. Невалидни стойности: ${preview}`, { type: 'warning' });
+            return;
+        }
+
+        const globalConflictSummary = getGlobalColumnConflictSummary(sheet, lastEmployeeRow);
+        if (hasAnyGlobalColumnConflict(globalConflictSummary)) {
+            notify(`Конфликт между колони (Global и P1/P2/P3): ${buildGlobalConflictMessage(globalConflictSummary)}`, { type: 'warning' });
+        }
+
         notify("Графикът е попълнен от настройките на матрицата.", { type: 'success' });
     };
 
     const handleSave = async () => {
-        if (!workbookRef.current) return;
-        const sheet = workbookRef.current.getActiveSheet();
-        
-        const rowCount = sheet.getRowCount(); // Note: contains header + employees + empty space
-        const daysInMonth = sheet.getColumnCount() - 9;
-        
-        const newRows: any[] = [];
-        
-        // Iterate only rows corresponding to employees
-        // Assumes row index 1 maps to loadedEmployees[0]
-        if (loadedEmployees.length === 0) {
-            notify("No employee data loaded to map rows.", { type: 'warning' });
+        if (isSavingRef.current) {
+            notify('Има текущо запазване. Изчакай секунда.', { type: 'info' });
             return;
         }
 
-        for (let i = 0; i < loadedEmployees.length; i++) {
-            const r = i + GRID_ROW_OFFSET; 
-            const emp = loadedEmployees[i];
-            
-            // Read matrix configs from cols 1,2,3,4
-            const matrixGlobal = sheet.getCell(r, 1)?.v || '';
-            const matrixP1 = sheet.getCell(r, 2)?.v || '';
-            const matrixP2 = sheet.getCell(r, 3)?.v || '';
-            const matrixP3 = sheet.getCell(r, 4)?.v || '';
-            
-            const rowData: any = {
-                employee_id: emp.id,
-                employee_name: emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' '),
-                matrix_global: matrixGlobal,
-                matrix_p1: matrixP1,
-                matrix_p2: matrixP2,
-                matrix_p3: matrixP3,
-            };
-
-            // Read days
-            for(let d=1; d<=daysInMonth; d++) {
-                const c = 8 + d; // Offset fixed to match Day 1 at index 9
-                const cell = sheet.getCell(r, c);
-                const val = cell?.v || '';
-                
-                rowData[`day_${d}`] = val;
-
-                // Save Style
-                if (cell && cell.s) {
-                    let style = cell.s;
-                    // If it is an ID string, resolve it from Styles collection
-                     if (typeof style === 'string' && workbookRef.current) {
-                        const styles = workbookRef.current.getStyles();
-                        style = styles.get(style);
-                    }
-                    if (style) {
-                         rowData[`day_${d}_s`] = style;
-                    }
-                }
-            }
-            
-            newRows.push(rowData);
+        if (autoSaveTimeoutRef.current) {
+            clearTimeout(autoSaveTimeoutRef.current);
+            autoSaveTimeoutRef.current = null;
         }
-        
-        // Trigger update
-        // Important: We must pass ALL required fields for PUT, or use PATCH if supported.
-        // API Platform PUT usually replaces the resource.
-        // And useRecordContext might return partial data.
-        
-        const payload = {
-            position: typeof record.position === 'object' ? record.position['@id'] : record.position,
-            year: record.year,
-            month: record.month,
-            schedule_rows: newRows,
-            status: record.status || 'чернова',
-            working_days: calendarStats ? calendarStats.workDays : record.working_days,
-            working_hours: calendarStats ? calendarStats.workHours : record.working_hours,
-        };
 
-        update('monthly_schedules', { 
-            id: record.id, 
-            data: payload,
-            previousData: record 
-        }, {
-            onSuccess: () => {
-                notify("Графикът е запазен успешно", { type: 'success' });
-            },
-            onError: (error) => {
-                notify(`Грешка при запазване: ${error.message}`, { type: 'error' });
-            }
-        });
+        isSavingRef.current = true;
+        setAutoSaveStatus('saving');
+        try {
+            await persistSchedule(false);
+            setAutoSaveStatus('saved');
+        } catch (error: any) {
+            notify(`Грешка при запазване: ${error?.message || 'неизвестна грешка'}`, { type: 'error' });
+            setAutoSaveStatus('error');
+        } finally {
+            isSavingRef.current = false;
+        }
     };
 
     const toggleFullscreen = () => {
@@ -1092,44 +1574,103 @@ export const UniverScheduleGrid = () => {
                     </Box>
                 )}
 
-                <Box display="flex" alignItems="center" gap={1}>
-                    <Typography variant="body2" fontWeight="bold">Матрица:</Typography>
-                    <FormControl size="small" sx={{ minWidth: 250 }}>
-                        <Select
-                            value={selectedMatrixId}
-                            onChange={(e) => setSelectedMatrixId(e.target.value)}
-                            displayEmpty
-                        >
-                             <MenuItem value="" disabled><em>Избери Матрица</em></MenuItem>
-                            {matrixData.map((m: any) => {
-                                 const monthName = new Date(m.year, m.month - 1).toLocaleString('bg-BG', { month: 'long' });
-                                 const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-                                 // Use pattern name if available, otherwise fallback to ID
-                                 const patternName = (typeof m === 'object' && m.patternName) ? m.patternName : (m.pattern || 'Unknown');
-                                 
-                                 const label = `${capitalizedMonth} - ${patternName}`; 
-                                 return <MenuItem key={m.id} value={String(m.id)}>{label}</MenuItem>;
-                            })}
-                        </Select>
-                    </FormControl>
+                <Box
+                    display="flex"
+                    alignItems="center"
+                    px={1.5}
+                    py={0.75}
+                    borderRadius={1}
+                    bgcolor={showMatrixConfig ? "#e8f5e9" : "#f3f4f6"}
+                    border={showMatrixConfig ? "1px solid #a5d6a7" : "1px solid #d1d5db"}
+                >
+                    <Typography variant="caption" fontWeight="bold" color={showMatrixConfig ? "#2e7d32" : "textSecondary"}>
+                        {showMatrixConfig ? 'Режим: С матрица' : 'Режим: Без матрица'}
+                    </Typography>
                 </Box>
 
-                <TextField 
-                    label="П1 Край"
-                    type="number"
-                    size="small"
-                    value={periods.p1End}
-                    onChange={e => setPeriods(p => ({ ...p, p1End: Number(e.target.value) }))}
-                    sx={{ width: 100 }}
-                />
-                <TextField 
-                    label="П2 Край"
-                    type="number"
-                    size="small"
-                    value={periods.p2End}
-                    onChange={e => setPeriods(p => ({ ...p, p2End: Number(e.target.value) }))}
-                    sx={{ width: 100 }}
-                />
+                {showMatrixConfig && (
+                    <>
+                        <Box display="flex" alignItems="center" gap={1}>
+                            <Typography variant="body2" fontWeight="bold">Матрица:</Typography>
+                            <FormControl size="small" sx={{ minWidth: 250 }}>
+                                <Select
+                                    value={selectedMatrixId}
+                                    onChange={(e) => setSelectedMatrixId(e.target.value)}
+                                    displayEmpty
+                                >
+                                     <MenuItem value="" disabled><em>Избери Матрица</em></MenuItem>
+                                    {matrixData.map((m: any) => {
+                                         const monthName = new Date(m.year, m.month - 1).toLocaleString('bg-BG', { month: 'long' });
+                                         const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+                                         const patternName = (typeof m === 'object' && m.patternName) ? m.patternName : (m.pattern || 'Unknown');
+                                         
+                                         const label = `${capitalizedMonth} - ${patternName}`; 
+                                         return <MenuItem key={m.id} value={String(m.id)}>{label}</MenuItem>;
+                                    })}
+                                </Select>
+                            </FormControl>
+                        </Box>
+
+                        <TextField 
+                            label="П1 Край"
+                            type="number"
+                            size="small"
+                            value={periods.p1End}
+                            onChange={e => setPeriods(p => ({ ...p, p1End: Number(e.target.value) }))}
+                            sx={{ width: 100 }}
+                        />
+                        <TextField 
+                            label="П2 Край"
+                            type="number"
+                            size="small"
+                            value={periods.p2End}
+                            onChange={e => setPeriods(p => ({ ...p, p2End: Number(e.target.value) }))}
+                            sx={{ width: 100 }}
+                        />
+
+                        <Box display="flex" alignItems="center" gap={0.5}>
+                            <Typography variant="caption" fontWeight="bold">Уникален</Typography>
+                            <TextField
+                                type="color"
+                                size="small"
+                                value={matrixValidationColors.single}
+                                onChange={e => setMatrixValidationColors(prev => ({ ...prev, single: e.target.value }))}
+                                sx={{ width: 46, minWidth: 46, '& .MuiInputBase-input': { p: 0.25, height: 28 } }}
+                            />
+                        </Box>
+
+                        <Box display="flex" alignItems="center" gap={0.5}>
+                            <Typography variant="caption" fontWeight="bold">Дублиран</Typography>
+                            <TextField
+                                type="color"
+                                size="small"
+                                value={matrixValidationColors.duplicate}
+                                onChange={e => setMatrixValidationColors(prev => ({ ...prev, duplicate: e.target.value }))}
+                                sx={{ width: 46, minWidth: 46, '& .MuiInputBase-input': { p: 0.25, height: 28 } }}
+                            />
+                        </Box>
+
+                        <Box display="flex" alignItems="center" gap={0.5}>
+                            <Typography variant="caption" fontWeight="bold">Празнични</Typography>
+                            <TextField
+                                type="color"
+                                size="small"
+                                value={matrixValidationColors.weekend}
+                                onChange={e => setMatrixValidationColors(prev => ({ ...prev, weekend: e.target.value }))}
+                                sx={{ width: 46, minWidth: 46, '& .MuiInputBase-input': { p: 0.25, height: 28 } }}
+                            />
+                        </Box>
+
+                        <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => setMatrixValidationColors(MATRIX_COLOR_DEFAULTS)}
+                            sx={{ minWidth: 'auto', px: 1 }}
+                        >
+                            Възстанови
+                        </Button>
+                    </>
+                )}
                 {/* Auto -Fill Button 
                 <Button variant="contained" onClick={handleCalculate} color="secondary" size="small">
                     Авто-Попълване
@@ -1138,6 +1679,41 @@ export const UniverScheduleGrid = () => {
                 <Button variant="outlined" onClick={handleOpenManage} disabled={isLoading} startIcon={<PersonAdd />} sx={{ mr: 1 }}>
                     Служители
                 </Button>
+
+                <Box
+                    display="flex"
+                    alignItems="center"
+                    px={1.5}
+                    py={0.75}
+                    borderRadius={1}
+                    bgcolor={
+                        autoSaveStatus === 'saving' || autoSaveStatus === 'pending'
+                            ? '#fff3e0'
+                            : autoSaveStatus === 'saved'
+                                ? '#e8f5e9'
+                                : autoSaveStatus === 'error'
+                                    ? '#ffebee'
+                                    : '#f3f4f6'
+                    }
+                    border={
+                        autoSaveStatus === 'saving' || autoSaveStatus === 'pending'
+                            ? '1px solid #ffcc80'
+                            : autoSaveStatus === 'saved'
+                                ? '1px solid #a5d6a7'
+                                : autoSaveStatus === 'error'
+                                    ? '1px solid #ef9a9a'
+                                    : '1px solid #d1d5db'
+                    }
+                >
+                    <Typography variant="caption" fontWeight="bold" color={autoSaveStatus === 'error' ? 'error.main' : 'textSecondary'}>
+                        {autoSaveStatus === 'pending' && 'Авто-запазване: изчаква...'}
+                        {autoSaveStatus === 'saving' && 'Авто-запазване: записва...'}
+                        {autoSaveStatus === 'saved' && 'Авто-запазване: запазено'}
+                        {autoSaveStatus === 'error' && 'Авто-запазване: грешка'}
+                        {autoSaveStatus === 'idle' && 'Авто-запазване: изкл.'}
+                    </Typography>
+                </Box>
+
                 <Box flex={1} />
                 
                 <IconButton onClick={toggleFullscreen} color="primary" title={isFullscreen ? "Изход от цял екран" : "Цял екран"}>
