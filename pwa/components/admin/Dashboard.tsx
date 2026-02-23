@@ -15,6 +15,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import AddIcon from "@mui/icons-material/Add";
 import TrainIcon from "@mui/icons-material/Train";
 import TimelineIcon from "@mui/icons-material/Timeline";
+import ViewWeekIcon from "@mui/icons-material/ViewWeek";
 
 export const Dashboard = () => {
   const handleNavigate = (path: string) => {
@@ -65,6 +66,14 @@ export const Dashboard = () => {
       color: "#9c27b0",
       viewPath: "/admin#/train_diagrams",
       addPath: "/admin#/train_diagrams/create",
+    },
+    {
+      title: "В график",
+      description: "Маршрути и места по смяна",
+      icon: <ViewWeekIcon sx={{ fontSize: 60 }} />,
+      color: "#0288d1",
+      viewPath: "/admin#/shift_schedule_details",
+      addPath: "/admin#/shift_schedule_details/create",
     },
   ];
 

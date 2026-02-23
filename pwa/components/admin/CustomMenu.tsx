@@ -19,12 +19,17 @@ import TimelineIcon from '@mui/icons-material/Timeline';
 
 export const CustomMenu = () => {
   const [employeesOpen, setEmployeesOpen] = React.useState(false);
+  const [shiftsOpen, setShiftsOpen] = React.useState(false);
   const [open] = useSidebarState();
   const resources = useResourceDefinitions();
   const [orderDetailsOpen, setOrderDetailsOpen] = React.useState(false);
 
   const handleEmployeesClick = () => {
     setEmployeesOpen(!employeesOpen);
+  };
+
+  const handleShiftsClick = () => {
+    setShiftsOpen(!shiftsOpen);
   };
 
   const handleOrderDetailsClick = () => {
@@ -68,7 +73,20 @@ export const CustomMenu = () => {
         to="/shift_schedules"
         primaryText="График на смени"
         leftIcon={<ScheduleIcon />}
+        onClick={handleShiftsClick}
+        rightIcon={shiftsOpen ? <ExpandLess /> : <ExpandMore />}
       />
+      
+      <Collapse in={shiftsOpen && open} timeout="auto" unmountOnExit>
+        <List component="div" disablePadding>
+          <MenuItemLink
+            to="/shift_schedule_details"
+            primaryText="В график"
+            leftIcon={<ViewWeekIcon />}
+            sx={{ pl: 4 }}
+          />
+        </List>
+      </Collapse>
 
       <MenuItemLink
         to="/order_patterns"

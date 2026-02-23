@@ -25,3 +25,13 @@ services:
     App\State\UserPasswordHasher:
         bind:
             $processor: '@api_platform.doctrine.orm.state.persist_processor'
+
+    App\State\ShiftSchedulesProcessor:
+        bind:
+            $processor: '@api_platform.doctrine.orm.state.persist_processor'
+
+    App\Serializer\ShiftSchedulesDenormalizer:
+        tags:
+            - { name: 'serializer.normalizer', priority: 100 }
+        bind:
+            $normalizer: '@serializer.normalizer.object'

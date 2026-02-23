@@ -24,6 +24,9 @@ import { useDataProvider, useNotify, useRedirect } from 'react-admin';
 
 interface ShiftRow {
   shift_code: string;
+  at_doctor: string;
+  at_duty_officer: string;
+  shift_end: string;
   worked_time: string;
   night_work: string;
   kilometers: string;
@@ -35,8 +38,6 @@ export const ShiftsBulkImport = () => {
   const [parsedRows, setParsedRows] = useState<ShiftRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [dayType, setDayType] = useState<string>('Делник');
-  const [season, setSeason] = useState<string>('Летен');
   const [progress, setProgress] = useState(0);
   
   const dataProvider = useDataProvider();
@@ -59,16 +60,19 @@ export const ShiftsBulkImport = () => {
         // Split by tab (Excel copy-paste delimiter)
         const columns = line.split('\t').map(col => col.trim());
         
-        if (columns.length < 5) {
-          throw new Error(`Ред ${index + 1}: Очаквам 5 колони, намерени ${columns.length}. Уверете се, че копирате всички колони от Excel.`);
+        if (columns.length < 8) {
+          throw new Error(`Ред ${index + 1}: Очаквам 8 колони, намерени ${columns.length}. Уверете се, че копирате всички колони от Excel.`);
         }
 
         rows.push({
           shift_code: columns[0] || '',
-          worked_time: columns[1] || '00:00',
-          night_work: columns[2] || '00:00',
-          kilometers: columns[3] || '0.00',
-          zero_time: columns[4] || '00:00',
+          at_doctor: columns[1] || '08:00',
+          at_duty_officer: columns[2] || '12:00',
+          shift_end: columns[3] || '16:00',
+          worked_time: columns[4] || '08:00',
+          night_work: columns[5] || '00:00',
+          kilometers: columns[6] || '0.00',
+          zero_time: columns[7] || '0:00',
         });
       });
 
@@ -82,11 +86,6 @@ export const ShiftsBulkImport = () => {
   const handleImport = async () => {
     if (parsedRows.length === 0) {
       notify('Няма данни за импорт', { type: 'warning' });
-      return;
-    }
-
-    if (!dayType || !season) {
-      notify('Моля изберете тип ден и сезон', { type: 'warning' });
       return;
     }
 
@@ -115,12 +114,13 @@ export const ShiftsBulkImport = () => {
           await dataProvider.create('shift_schedules', {
             data: {
               shift_code: row.shift_code,
-              day_type: dayType,
-              season: season,
+              at_doctor: row.at_doctor,
+              at_duty_officer: row.at_duty_officer,
+              shift_end: row.shift_end,
               worked_time: row.worked_time,
               night_work: row.night_work || '00:00',
               kilometers: km,
-              zero_time: row.zero_time || '00:00',
+              zero_time: row.zero_time || '0:00',
             }
           });
           successCount++;
@@ -170,42 +170,12 @@ export const ShiftsBulkImport = () => {
         </Typography>
         
         <Typography variant="body2" color="textSecondary" paragraph>
-          Изберете тип ден и сезон, след което копирайте редовете от Excel таблица.
+          Копирайте редовете от Excel таблица със следните колони:
           <br />
-          <strong>Колони (в този ред):</strong> Код на смяна | Отработено време | Нощен труд | Километри | Нулево време
+          <strong>Колони (в този ред):</strong> Код на смяна | При лекар | При дежурен | Край на смяната | Отработено време | Нощен труд | Километри | Нулево време
           <br />
-          <strong>Пример:</strong> СМ1-Л	08:00	00:00	0.00	00:00
+          <strong>Пример:</strong> СМ1-Л	08:00	12:00	16:00	08:00	00:00	0.00	0:00
         </Typography>
-
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Тип ден</InputLabel>
-              <Select
-                value={dayType}
-                label="Тип ден"
-                onChange={(e) => setDayType(e.target.value)}
-              >
-                <MenuItem value="Делник">Делник</MenuItem>
-                <MenuItem value="Празник">Празник</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Сезон</InputLabel>
-              <Select
-                value={season}
-                label="Сезон"
-                onChange={(e) => setSeason(e.target.value)}
-              >
-                <MenuItem value="Летен">Летен</MenuItem>
-                <MenuItem value="Зимен">Зимен</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
 
         <TextField
           multiline
@@ -230,7 +200,7 @@ export const ShiftsBulkImport = () => {
         {parsedRows.length > 0 && (
           <>
             <Typography variant="h6" gutterBottom>
-              Преглед ({parsedRows.length} реда) - {dayType}, {season}
+              Преглед ({parsedRows.length} реда)
             </Typography>
             
             <Box sx={{ maxHeight: 400, overflow: 'auto', mb: 2 }}>
@@ -238,8 +208,11 @@ export const ShiftsBulkImport = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>Код</TableCell>
+                    <TableCell>При лекар</TableCell>
+                    <TableCell>При дежурен</TableCell>
+                    <TableCell>Край</TableCell>
                     <TableCell>Отработено</TableCell>
-                    <TableCell>Нощен труд</TableCell>
+                    <TableCell>Нощен</TableCell>
                     <TableCell>Km</TableCell>
                     <TableCell>Нулево</TableCell>
                   </TableRow>
@@ -248,6 +221,9 @@ export const ShiftsBulkImport = () => {
                   {parsedRows.map((row, index) => (
                     <TableRow key={index}>
                       <TableCell>{row.shift_code}</TableCell>
+                      <TableCell>{row.at_doctor}</TableCell>
+                      <TableCell>{row.at_duty_officer}</TableCell>
+                      <TableCell>{row.shift_end}</TableCell>
                       <TableCell>{row.worked_time}</TableCell>
                       <TableCell>{row.night_work}</TableCell>
                       <TableCell>{row.kilometers}</TableCell>

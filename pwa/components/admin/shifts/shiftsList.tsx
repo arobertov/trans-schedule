@@ -21,26 +21,10 @@ const ListActions = () => (
 const ShiftFilters = () => (
     <Card sx={{ order: -1, mr: 2, mt: 6, width: 250 }}>
         <CardContent>
-            <FilterList label="Тип смени" icon={<WorkIcon />}>
+            <FilterList label="Други филтри" icon={<WorkIcon />}>
                 <FilterListItem
                     label="Всички"
-                    value={{ 'day_type': undefined, 'season': undefined }}
-                />
-                <FilterListItem
-                    label="Делник - Зимен"
-                    value={{ 'day_type': 'Делник', 'season': 'Зимен' }}
-                />
-                <FilterListItem
-                    label="Празник - Зимен"
-                    value={{ 'day_type': 'Празник', 'season': 'Зимен' }}
-                />
-                <FilterListItem
-                    label="Делник - Летен"
-                    value={{ 'day_type': 'Делник', 'season': 'Летен' }}
-                />
-                <FilterListItem
-                    label="Празник - Летен"
-                    value={{ 'day_type': 'Празник', 'season': 'Летен' }}
+                    value={{}}
                 />
             </FilterList>
         </CardContent>
@@ -87,24 +71,31 @@ export const ShiftsList = () => (
                 textAlign="center"
             />
             <FieldGuesser source="shift_code" label="Код на смяна" />
-            <FieldGuesser source="day_type" label="Тип ден" />
-            <FieldGuesser source="season" label="Сезон" />
+            <FunctionField
+                source="at_doctor"
+                label="При лекар"
+                render={(record: any) => record.at_doctor || '-'}
+            />
+            <FunctionField
+                source="at_duty_officer"
+                label="При дежурен"
+                render={(record: any) => record.at_duty_officer || '-'}
+            />
+            <FunctionField
+                source="shift_end"
+                label="Край на смяната"
+                render={(record: any) => record.shift_end || '-'}
+            />
             <FunctionField
                 source="worked_time"
                 label="Отработено време"
                 render={(record: any) => record.worked_time || '-'}
             />
             <FunctionField
-                source="night_work"
-                label="Нощен труд"
-                render={(record: any) => record.night_work || '-'}
+                source="kilometers"
+                label="Километри"
+                render={(record: any) => record.kilometers || '-'}
             />
-            <FunctionField
-                source="total_time"
-                label="Общо време"
-                render={(record: any) => record.total_time || '-'}
-            />
-            <FieldGuesser source="kilometers" label="Километри" />
             <FunctionField
                 source="zero_time"
                 label="Нулево време"
