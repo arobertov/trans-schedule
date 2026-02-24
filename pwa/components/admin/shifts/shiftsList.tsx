@@ -52,6 +52,14 @@ const Empty = () => (
     </Box>
 );
 
+const RowNumberField = ({ record }: { record?: any }) => {
+    const { data, page, perPage } = useListContext();
+    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
+    if (index === -1) return <span>-</span>;
+    const offset = (page - 1) * perPage;
+    return <span>{offset + index + 1}</span>;
+};
+
 export const ShiftsList = () => (
     <List 
         actions={<ListActions />} 
@@ -59,16 +67,11 @@ export const ShiftsList = () => (
         aside={<ShiftFilters />}
     >
         <Datagrid>
+            <RowNumberField />
             <FunctionField
-                label="№"
-                render={(record: any) => {
-                    const { data, page, perPage } = useListContext();
-                    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
-                    if (index === -1) return '-';
-                    const offset = (page - 1) * perPage;
-                    return offset + index + 1;
-                }}
-                textAlign="center"
+                source="shift_schedule"
+                label="График на смените"
+                render={(record: any) => record.shift_schedule?.name || '-'}
             />
             <FieldGuesser source="shift_code" label="Код на смяна" />
             <FunctionField

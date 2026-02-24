@@ -71,7 +71,7 @@ export const CustomMenu = () => {
       
       <MenuItemLink
         to="/shift_schedules"
-        primaryText="График на смени"
+        primaryText="График на смените"
         leftIcon={<ScheduleIcon />}
         onClick={handleShiftsClick}
         rightIcon={shiftsOpen ? <ExpandLess /> : <ExpandMore />}
@@ -81,7 +81,7 @@ export const CustomMenu = () => {
         <List component="div" disablePadding>
           <MenuItemLink
             to="/shift_schedule_details"
-            primaryText="В график"
+            primaryText="Смени"
             leftIcon={<ViewWeekIcon />}
             sx={{ pl: 4 }}
           />

@@ -223,3 +223,9 @@ DATABASE_URL: mysql://api-platform:123456@database:3306/api?serverVersion=8.0
 - ✅ Include Bulgarian phone regex for Bulgarian phone numbers: `/^(?:\+359|0)8[789]\d{7}$/`
 - ✅ Set pagination defaults in ApiResource (`paginationItemsPerPage: 30`)
 - ✅ Clear cache after config changes: `docker compose exec -T php php bin/console cache:clear`
+
+## Connect to the API
+- Base URL: `http://localhost` (same-origin with PWA)
+- API Docs: `http://localhost/docs` (Swagger UI)
+- Admin: `http://localhost/admin` (API Platform Admin)
+
