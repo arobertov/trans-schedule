@@ -229,3 +229,7 @@ DATABASE_URL: mysql://api-platform:123456@database:3306/api?serverVersion=8.0
 - API Docs: `http://localhost/docs` (Swagger UI)
 - Admin: `http://localhost/admin` (API Platform Admin)
 
+## Install dependencies
+- Backend: `docker compose exec php composer install`
+- Frontend: `docker compose exec pwa npm install`   
+

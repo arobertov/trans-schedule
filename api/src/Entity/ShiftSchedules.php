@@ -21,7 +21,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: ShiftSchedulesRepository::class)]
 #[ApiResource(
-    description: 'Графици (Групи от смени)',
+    description: 'Графици на смените (Групи от графици на смени)',
     mercure: true,
     normalizationContext: ['groups' => ['schedule:read']], 
     denormalizationContext: ['groups' => ['schedule:write']],
@@ -64,9 +64,17 @@ class ShiftSchedules
     )]
     #[ApiProperty(
         description: 'Име на графика',
-        example: 'График Януари 2026'
+        example: 'Делник/Празник от 02.02.2026г.'
     )]
     private ?string $name = null;
+
+    #[ORM\Column(type: 'text', nullable: true)]
+    #[Groups(['schedule:read', 'schedule:write'])]  
+    #[ApiProperty(
+        description: 'Описание на графика',
+        example: 'Зимен/Летен със 16/11 смени.'
+    )]
+    private ?string $description = null;
 
     #[ORM\OneToMany(targetEntity: ShiftScheduleDetails::class, mappedBy: 'shift_schedule', cascade: ['persist', 'remove'], orphanRemoval: true)]
     #[Groups(['schedule:read', 'schedule:write'])]
@@ -111,6 +119,17 @@ class ShiftSchedules
     public function setName(string $name): static
     {
         $this->name = $name;
+        return $this;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    public function setDescription(?string $description): static
+    {
+        $this->description = $description;
         return $this;
     }
 
