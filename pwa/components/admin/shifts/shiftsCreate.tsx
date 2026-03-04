@@ -37,6 +37,7 @@ export const ShiftsCreate = () => (
         <ArrayInput source="routes" label="Маршрути и места">
             <SimpleFormIterator inline>
                 <NumberInput source="route" label="Маршрут" />
+                <NumberInput source="route_kilometers" label="Км. за качването" step={0.01} />
                 <TextInput source="pickup_location" label="Място на качване" />
                 <NumberInput source="pickup_route_number" label="Път № (качване)" />
                 <TimeInput source="in_schedule" label="В график" />

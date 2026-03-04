@@ -43,7 +43,7 @@ const formatTimeValue = (value: unknown): string => {
 };
 
 const formatKilometers = (value: unknown): string => {
-    if (typeof value !== "number") {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
         return "-";
     }
 
@@ -132,9 +132,27 @@ const ShiftJournalTable = () => {
                                     <>
                                         <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{formatTimeValue(shift?.shift_end)}</TableCell>
                                         <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{formatTimeValue(shift?.worked_time)}</TableCell>
-                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{formatKilometers(shift?.kilometers)}</TableCell>
                                     </>
                                 )}
+
+                                <TableCell
+                                    align="center"
+                                    sx={
+                                        routeIndex === 0
+                                            ? {
+                                                fontWeight: 700,
+                                                backgroundColor: "action.hover",
+                                            }
+                                            : {
+                                                color: "text.secondary",
+                                                fontStyle: "italic",
+                                            }
+                                    }
+                                >
+                                    {routeIndex === 0
+                                        ? formatKilometers(shift?.kilometers)
+                                        : formatKilometers(route?.route_kilometers)}
+                                </TableCell>
                             </TableRow>
                         ));
                     })}

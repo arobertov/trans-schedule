@@ -30,6 +30,39 @@ final readonly class ShiftScheduleDetailsProcessor implements ProcessorInterface
                         throw new \InvalidArgumentException('Invalid zero_time format: Expected format like "-1:50", "2:15", or null. ' . $e->getMessage());
                     }
                 }
+
+                if ($payload && isset($payload['routes']) && is_array($payload['routes'])) {
+                    $normalizedRoutes = [];
+
+                    foreach ($payload['routes'] as $route) {
+                        if (!is_array($route)) {
+                            $normalizedRoutes[] = $route;
+                            continue;
+                        }
+
+                        if (array_key_exists('route_kilometers', $route)) {
+                            $value = $route['route_kilometers'];
+
+                            if (is_string($value)) {
+                                $trimmed = trim($value);
+                                if ($trimmed === '') {
+                                    $route['route_kilometers'] = null;
+                                } else {
+                                    $normalized = str_replace(',', '.', $trimmed);
+                                    if (is_numeric($normalized)) {
+                                        $route['route_kilometers'] = round((float) $normalized, 2);
+                                    }
+                                }
+                            } elseif (is_int($value) || is_float($value)) {
+                                $route['route_kilometers'] = round((float) $value, 2);
+                            }
+                        }
+
+                        $normalizedRoutes[] = $route;
+                    }
+
+                    $data->setRoutes($normalizedRoutes);
+                }
             }
         }
 

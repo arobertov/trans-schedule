@@ -168,6 +168,28 @@ const normalizeTimeToLocalHHmm = (value: unknown): unknown => {
   return `${hours}:${minutes}`;
 };
 
+const normalizeToFloat = (value: unknown): unknown => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : value;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return value;
+  }
+
+  const parsed = Number.parseFloat(trimmed.replace(",", "."));
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+
+  return Math.round(parsed * 100) / 100;
+};
+
 const normalizeShiftScheduleDetailsPayload = (data: any) => {
   if (!data || typeof data !== "object") {
     return data;
@@ -214,6 +236,7 @@ const normalizeShiftScheduleDetailsPayload = (data: any) => {
         ...route,
         in_schedule: normalizeTimeToLocalHHmm(route.in_schedule),
         from_schedule: normalizeTimeToLocalHHmm(route.from_schedule),
+        route_kilometers: normalizeToFloat(route.route_kilometers),
       };
     });
   }

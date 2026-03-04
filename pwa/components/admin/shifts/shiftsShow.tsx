@@ -1,6 +1,7 @@
 import {
     Show,
     SimpleShowLayout,
+    Labeled,
     ReferenceField,
     TextField,
     NumberField,
@@ -9,6 +10,7 @@ import {
     FunctionField,
     DateField,
 } from "react-admin";
+import { Box, Typography } from "@mui/material";
 
 const formatTimeValue = (value: unknown): string => {
     if (!value) {
@@ -41,50 +43,114 @@ const formatTimeValue = (value: unknown): string => {
 
 export const ShiftsShow = () => (
     <Show>
-        <SimpleShowLayout>
-            <ReferenceField source="shift_schedule" reference="shift_schedules" label="График на смените">
-                <TextField source="name" />
-            </ReferenceField>
+        <SimpleShowLayout
+            sx={{
+                maxWidth: 980,
+                "& .RaLabeled-root": {
+                    marginBottom: 1,
+                },
+                "& .RaLabeled-label": {
+                    fontWeight: 600,
+                    color: "text.secondary",
+                    marginBottom: 0.5,
+                },
+            }}
+        >
+            <Box
+                sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+                    gap: 2,
+                    width: "100%",
+                    p: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 2,
+                    backgroundColor: "background.paper",
+                }}
+            >
+                <Labeled label="График на смените">
+                    <ReferenceField source="shift_schedule" reference="shift_schedules">
+                        <FunctionField
+                            render={(record: any) => (
+                                <Typography component="span" sx={{ fontWeight: 500 }}>
+                                    {record?.name || "-"}
+                                    {record?.description ? ` — ${record.description}` : ""}
+                                </Typography>
+                            )}
+                        />
+                    </ReferenceField>
+                </Labeled>
 
-            <TextField source="shift_code" label="Код на смяна" />
+                <Labeled label="Код на смяна">
+                    <TextField source="shift_code" />
+                </Labeled>
 
-            <FunctionField
-                source="at_doctor"
-                label="При лекар"
-                render={(record: any) => formatTimeValue(record?.at_doctor)}
-            />
-            <FunctionField
-                source="at_duty_officer"
-                label="При дежурен"
-                render={(record: any) => formatTimeValue(record?.at_duty_officer)}
-            />
-            <FunctionField
-                source="shift_end"
-                label="Край на смяната"
-                render={(record: any) => formatTimeValue(record?.shift_end)}
-            />
-            <FunctionField
-                source="worked_time"
-                label="Отработено време"
-                render={(record: any) => formatTimeValue(record?.worked_time)}
-            />
-            <FunctionField
-                source="night_work"
-                label="Нощен труд"
-                render={(record: any) => formatTimeValue(record?.night_work)}
-            />
-            <FunctionField
-                source="total_time"
-                label="Общо време"
-                render={(record: any) => formatTimeValue(record?.total_time)}
-            />
+                <Labeled label="При лекар">
+                    <FunctionField
+                        source="at_doctor"
+                        render={(record: any) => formatTimeValue(record?.at_doctor)}
+                    />
+                </Labeled>
+                <Labeled label="При дежурен">
+                    <FunctionField
+                        source="at_duty_officer"
+                        render={(record: any) => formatTimeValue(record?.at_duty_officer)}
+                    />
+                </Labeled>
+                <Labeled label="Край на смяната">
+                    <FunctionField
+                        source="shift_end"
+                        render={(record: any) => formatTimeValue(record?.shift_end)}
+                    />
+                </Labeled>
+                <Labeled label="Отработено време">
+                    <FunctionField
+                        source="worked_time"
+                        render={(record: any) => formatTimeValue(record?.worked_time)}
+                    />
+                </Labeled>
+                <Labeled label="Нощен труд">
+                    <FunctionField
+                        source="night_work"
+                        render={(record: any) => formatTimeValue(record?.night_work)}
+                    />
+                </Labeled>
+                <Labeled label="Общо време">
+                    <FunctionField
+                        source="total_time"
+                        render={(record: any) => formatTimeValue(record?.total_time)}
+                    />
+                </Labeled>
 
-            <NumberField source="kilometers" label="Километри" />
-            <TextField source="zero_time" label="Нулево време" />
+                <Labeled label="Километри">
+                    <NumberField source="kilometers" />
+                </Labeled>
+                <Labeled label="Нулево време">
+                    <TextField source="zero_time" />
+                </Labeled>
+            </Box>
 
             <ArrayField source="routes" label="Маршрути и места">
-                <Datagrid bulkActionButtons={false}>
+                <Datagrid
+                    bulkActionButtons={false}
+                    sx={{
+                        "& .RaDatagrid-headerCell": {
+                            fontWeight: 700,
+                            backgroundColor: "action.hover",
+                        },
+                        "& .RaDatagrid-row": {
+                            "&:nth-of-type(even)": {
+                                backgroundColor: "action.selected",
+                            },
+                        },
+                        "& .RaDatagrid-rowCell": {
+                            py: 1,
+                        },
+                    }}
+                >
                     <TextField source="route" label="Маршрут" />
+                    <NumberField source="route_kilometers" label="Км. за качването" />
                     <TextField source="pickup_location" label="Място на качване" />
                     <TextField source="pickup_route_number" label="Път № (качване)" />
                     <FunctionField

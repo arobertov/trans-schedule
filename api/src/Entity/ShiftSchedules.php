@@ -79,7 +79,9 @@ class ShiftSchedules
     #[ORM\OneToMany(targetEntity: ShiftScheduleDetails::class, mappedBy: 'shift_schedule', cascade: ['persist', 'remove'], orphanRemoval: true)]
     #[Groups(['schedule:read', 'schedule:write'])]
     #[ApiProperty(
-        description: 'Смени в този график'
+        description: 'Смени в този график',
+        readableLink: false,
+        writableLink: false
     )]
     private Collection $details;
 

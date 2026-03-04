@@ -153,8 +153,8 @@ class ShiftScheduleDetails
     #[ORM\Column(type: Types::JSON, nullable: true)]
     #[Groups(['shift_detail:read', 'shift_detail:write', 'schedule:read'])]
     #[ApiProperty(
-        description: 'Маршрути и места по смяна (JSON масив)',
-        example: '[{"route": 1, "pickup_location": "МС-14", "pickup_route_number": 2, "in_schedule": "08:00", "from_schedule": "16:00", "dropoff_location": "Депо", "dropoff_route_number": }]'
+        description: 'Маршрути и места по смяна (JSON масив), включително километри за конкретното качване (route_kilometers)',
+        example: '[{"route": 100, "route_kilometers": 31.00, "pickup_location": "МС-14", "pickup_route_number": 2, "in_schedule": "09:05", "from_schedule": "10:17", "dropoff_location": "МС-14", "dropoff_route_number": 1}]'
     )]
     private ?array $routes = [];
 
