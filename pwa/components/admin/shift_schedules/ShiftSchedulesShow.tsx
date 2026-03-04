@@ -101,37 +101,64 @@ const ShiftJournalTable = () => {
                         <TableCell align="center">Край</TableCell>
                         <TableCell align="center">Раб. вр.</TableCell>
                         <TableCell align="center">Км.</TableCell>
+                        <TableCell align="center">Нулево време</TableCell>
+                        <TableCell align="center">Нощен труд</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
                     {data.map((shift: any, shiftIndex: number) => {
-                        const routes = Array.isArray(shift?.routes) && shift.routes.length > 0
-                            ? shift.routes
+                        const routeCount = Array.isArray(shift?.routes) ? shift.routes.length : 0;
+                        const hasRoutes = routeCount > 0;
+                        const hasMultipleRoutes = routeCount > 1;
+                        const routes = hasRoutes
+                            ? (hasMultipleRoutes ? [{}, ...shift.routes] : shift.routes)
                             : [{}];
 
                         return routes.map((route: any, routeIndex: number) => (
                             <TableRow key={`${shift?.id ?? shiftIndex}-${routeIndex}`}>
                                 {routeIndex === 0 && (
                                     <>
-                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{shiftIndex + 1}</TableCell>
-                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{shift?.shift_code ?? "-"}</TableCell>
-                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{formatTimeValue(shift?.at_doctor)}</TableCell>
-                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{formatTimeValue(shift?.at_duty_officer)}</TableCell>
+                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "middle", border: "1px double rgb(0, 0, 0)" }}>{shiftIndex + 1}</TableCell>
+                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "middle", border: "1px double rgb(0, 0, 0)" }}>{shift?.shift_code ?? " "}</TableCell>
+                                        <TableCell  align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{formatTimeValue(shift?.at_doctor)}</TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{formatTimeValue(shift?.at_duty_officer)}</TableCell>
                                     </>
                                 )}
 
-                                <TableCell align="center">{route?.route ?? "-"}</TableCell>
-                                <TableCell align="center">{route?.pickup_location ?? "-"}</TableCell>
-                                <TableCell align="center">{route?.pickup_route_number ?? "*"}</TableCell>
-                                <TableCell align="center">{formatTimeValue(route?.in_schedule)}</TableCell>
-                                <TableCell align="center">{formatTimeValue(route?.from_schedule)}</TableCell>
-                                <TableCell align="center">{route?.dropoff_location ?? "-"}</TableCell>
-                                <TableCell align="center">{route?.dropoff_route_number ?? "*"}</TableCell>
+                                {shift?.routes.length > 1 && routeIndex > 0 && (
+                                    <>
+                                        <TableCell  align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                    </>
+                                )
+                                }
+
+                                {hasMultipleRoutes && routeIndex === 0 ? (
+                                    <>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}></TableCell>
+                                    </>
+                                ) : (
+                                    <>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{route?.route ?? " "}</TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{route?.pickup_location ?? " "}</TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{route?.pickup_route_number ?? "*"}</TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{formatTimeValue(route?.in_schedule?? " ")}</TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{formatTimeValue(route?.from_schedule?? " ")}</TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{route?.dropoff_location ?? " "}</TableCell>
+                                        <TableCell align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{route?.dropoff_route_number ?? "*"}</TableCell>
+                                    </>
+                                )}
 
                                 {routeIndex === 0 && (
                                     <>
-                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{formatTimeValue(shift?.shift_end)}</TableCell>
-                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top" }}>{formatTimeValue(shift?.worked_time)}</TableCell>
+                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{formatTimeValue(shift?.shift_end)}</TableCell>
+                                        <TableCell rowSpan={routes.length} align="center" sx={{ verticalAlign: "top", border: "1px double rgb(0, 0, 0)" }}>{formatTimeValue(shift?.worked_time)}</TableCell>
                                     </>
                                 )}
 
@@ -147,11 +174,22 @@ const ShiftJournalTable = () => {
                                                 color: "text.secondary",
                                                 fontStyle: "italic",
                                             }
+                                    
                                     }
                                 >
                                     {routeIndex === 0
                                         ? formatKilometers(shift?.kilometers)
                                         : formatKilometers(route?.route_kilometers)}
+                                </TableCell>
+                                <TableCell align="center" sx={{ border: "1px double rgb(0, 0, 0)" }}>
+                                    {routeIndex === 0
+                                        ? shift?.zero_time?? " " 
+                                        : route?.zero_time?? " " }
+                                </TableCell>
+                                <TableCell align="center" sx={{ border: "1px double rgb(0, 0, 0)" }}>
+                                    {routeIndex === 0
+                                        ? shift?.night_work ?? " "
+                                        : route?.night_work ?? " "}
                                 </TableCell>
                             </TableRow>
                         ));
