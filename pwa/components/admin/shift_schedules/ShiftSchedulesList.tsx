@@ -33,10 +33,9 @@ const Empty = () => (
 
 const RowNumberField = () => {
     const record = useRecordContext();
-    const { ids = [], page, perPage } = useListContext();
-    const recordId = record?.id;
-    const index = recordId == null ? -1 : ids.findIndex((id: Identifier) => String(id) === String(recordId));
-    if (index === -1) return <span>-</span>;
+    const { data, page, perPage } = useListContext();
+    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
+    if (index === -1) return '-';
     const offset = (page - 1) * perPage;
     return <span>{offset + index + 1}</span>;
 };

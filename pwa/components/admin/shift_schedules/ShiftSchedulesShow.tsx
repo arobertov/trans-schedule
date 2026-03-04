@@ -1,8 +1,8 @@
 import {
     Show,
     SimpleShowLayout,
-    TextField,
     DateField,
+    Labeled,
     useShowContext,
     useGetList,
 } from "react-admin";
@@ -51,6 +51,17 @@ const formatKilometers = (value: unknown): string => {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
     });
+};
+
+const formatHeaderValue = (value: unknown): string => {
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+            return trimmed.toLocaleUpperCase("bg-BG");
+        }
+    }
+
+    return "-";
 };
 
 const ShiftJournalTable = () => {
@@ -133,17 +144,55 @@ const ShiftJournalTable = () => {
     );
 };
 
+const ShiftScheduleHeader = () => {
+    const { record } = useShowContext();
+
+    return (
+        <Box width="100%" sx={{ mb: 1 }}>
+            <Typography variant="h6" textAlign="center" sx={{ fontWeight: 700 }}>
+                ГРАФИК НА СМЕНИТЕ
+            </Typography>
+            <Typography
+                variant="h6"
+                textAlign="center"
+                sx={{ fontWeight: 700, textDecoration: "underline" }}
+            >
+                {formatHeaderValue(record?.description)}
+            </Typography>
+            <Typography variant="h4" textAlign="center" sx={{ fontWeight: 700 }}>
+                {formatHeaderValue(record?.name)}
+            </Typography>
+        </Box>
+    );
+};
+
 export const ShiftSchedulesShow = () => (
     <Show>
         <SimpleShowLayout>
-            <TextField source="name" label="Име на графика" />
-            <DateField source="created_at" label="Създаден на" showTime />
-            <DateField source="updated_at" label="Обновен на" showTime />
+            <Box
+                width="100%"
+                sx={{
+                    display: "grid",
+                    gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+                    gap: 2,
+                    mb: 1,
+                }}
+            >
+                <Box component={Paper} variant="outlined" sx={{ p: 2 }}>
+                    <Labeled label="Създаден на" fullWidth>
+                        <DateField source="created_at" showTime />
+                    </Labeled>
+                </Box>
+
+                <Box component={Paper} variant="outlined" sx={{ p: 2 }}>
+                    <Labeled label="Обновен на" fullWidth>
+                        <DateField source="updated_at" showTime />
+                    </Labeled>
+                </Box>
+            </Box>
 
             <Box width="100%">
-                <Typography variant="h5" textAlign="center" sx={{ fontWeight: 700, mb: 1 }}>
-                    ДЕЛНИК
-                </Typography>
+                <ShiftScheduleHeader />
                 <ShiftJournalTable />
             </Box>
         </SimpleShowLayout>
