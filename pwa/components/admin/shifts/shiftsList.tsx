@@ -1,5 +1,5 @@
 import { FieldGuesser } from "@api-platform/admin";
-import { List, Datagrid, FunctionField, useListContext, TopToolbar, CreateButton, Button, FilterList, FilterListItem } from "react-admin";
+import { List, Datagrid, FunctionField, useListContext, TopToolbar, CreateButton, Button, FilterList, FilterListItem, ReferenceField, useGetList } from "react-admin";
 import { Link } from 'react-router-dom';
 import UploadIcon from '@mui/icons-material/Upload';
 import { Box, Typography, Card, CardContent } from '@mui/material';
@@ -17,19 +17,29 @@ const ListActions = () => (
         />
     </TopToolbar>
 );
+const ShiftFilters = () => {
+    const { data: shiftSchedules = [] } = useGetList('shift_schedules', {
+        pagination: { page: 1, perPage: 1000 },
+        sort: { field: 'name', order: 'ASC' },
+    });
 
-const ShiftFilters = () => (
-    <Card sx={{ order: -1, mr: 2, mt: 6, width: 250 }}>
-        <CardContent>
-            <FilterList label="Други филтри" icon={<WorkIcon />}>
-                <FilterListItem
-                    label="Всички"
-                    value={{}}
-                />
-            </FilterList>
-        </CardContent>
-    </Card>
-);
+    return (
+        <Card sx={{ order: -1, mr: 2, mt: 6, width: 280 }}>
+            <CardContent>
+                <FilterList label="Графици на смените" icon={<WorkIcon />}>
+                    <FilterListItem label="Всички" value={{ shift_schedule: undefined }} />
+                    {shiftSchedules.map((schedule: any) => (
+                        <FilterListItem
+                            key={schedule.id}
+                            label={schedule.name || `График #${schedule.id}`}
+                            value={{ shift_schedule: schedule['@id'] ?? schedule.id }}
+                        />
+                    ))}
+                </FilterList>
+            </CardContent>
+        </Card>
+    );
+};
 
 const Empty = () => (
     <Box textAlign="center" m={4}>
@@ -52,13 +62,6 @@ const Empty = () => (
     </Box>
 );
 
-const RowNumberField = ({ record }: { record?: any }) => {
-    const { data, page, perPage } = useListContext();
-    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
-    if (index === -1) return <span>-</span>;
-    const offset = (page - 1) * perPage;
-    return <span>{offset + index + 1}</span>;
-};
 
 export const ShiftsList = () => (
     <List 
@@ -67,12 +70,21 @@ export const ShiftsList = () => (
         aside={<ShiftFilters />}
     >
         <Datagrid>
-            <RowNumberField />
             <FunctionField
-                source="shift_schedule"
-                label="График на смените"
-                render={(record: any) => record.shift_schedule?.name || '-'}
+                label="№"
+                render={(record: any) => {
+                    const { data, page, perPage } = useListContext();
+                    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
+                    if (index === -1) return '-';
+                    const offset = (page - 1) * perPage;
+                    return offset + index + 1;
+                }}
+                textAlign="center"
             />
+
+            <ReferenceField source="shift_schedule" reference="shift_schedules" label="График на смените" link="show">
+                <FieldGuesser source="name"/>
+            </ReferenceField>
             <FieldGuesser source="shift_code" label="Код на смяна" />
             <FunctionField
                 source="at_doctor"

@@ -40,6 +40,23 @@ final readonly class ShiftScheduleDetailsProcessor implements ProcessorInterface
                             continue;
                         }
 
+                        foreach (['pickup_location', 'dropoff_location'] as $field) {
+                            if (!array_key_exists($field, $route)) {
+                                continue;
+                            }
+
+                            $value = $route[$field];
+
+                            if ($value === null) {
+                                continue;
+                            }
+
+                            if (is_string($value)) {
+                                $trimmed = trim($value);
+                                $route[$field] = $trimmed === '' ? null : $trimmed;
+                            }
+                        }
+
                         if (array_key_exists('route_kilometers', $route)) {
                             $value = $route['route_kilometers'];
 

@@ -36,14 +36,14 @@ export const ShiftsCreate = () => (
 
         <ArrayInput source="routes" label="Маршрути и места">
             <SimpleFormIterator inline>
-                <NumberInput source="route" label="Маршрут" />
+                <TextInput source="route" label="Маршрут" />
                 <NumberInput source="route_kilometers" label="Км. за качването" step={0.01} />
                 <TextInput source="pickup_location" label="Място на качване" />
-                <NumberInput source="pickup_route_number" label="Път № (качване)" />
+                <TextInput source="pickup_route_number" label="Път № (качване)" />
                 <TimeInput source="in_schedule" label="В график" />
                 <TimeInput source="from_schedule" label="От график" />
                 <TextInput source="dropoff_location" label="Място на слизане" />
-                <NumberInput source="dropoff_route_number" label="Път № (слизане)" />
+                <TextInput source="dropoff_route_number" label="Път № (слизане)" />
             </SimpleFormIterator>
         </ArrayInput>
     </CreateGuesser>

@@ -9,7 +9,7 @@ const ListActions = () => (
         <CreateButton />
         <Button
             component={Link}
-            to="/shift_schedules/bulk-import"
+            to="/shifts/bulk-import"
             label="Масов импорт"
             icon={<UploadIcon />}
         />

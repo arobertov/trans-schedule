@@ -1,8 +1,16 @@
 import axios from 'axios';
 import { getToken } from '../utils/token';
 
+const resolveApiBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+
+  return process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_ENTRYPOINT || 'http://php';
+};
+
 const  api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://localhost',
+  baseURL: resolveApiBaseUrl(),
   headers: {
     'Content-Type': 'application/ld+json',
     'Accept': 'application/ld+json',

@@ -2,8 +2,11 @@
     "recommendations": [
         "github.copilot-chat",
         "formulahendry.vscode-mysql",
+        "ms-vscode-remote.remote-containers",
+        "ms-vscode.remote-repositories",
         "xdebug.php-debug",
         "msjsdiag.debugger-for-chrome",
-        "ms-vscode.js-debug"
+        "ms-vscode.js-debug",
+        "dbaeumer.vscode-eslint"
     ]
 }

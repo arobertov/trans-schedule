@@ -190,6 +190,23 @@ const normalizeToFloat = (value: unknown): unknown => {
   return Math.round(parsed * 100) / 100;
 };
 
+const normalizeOptionalRouteText = (value: unknown): string | null | unknown => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+};
+
 const normalizeShiftScheduleDetailsPayload = (data: any) => {
   if (!data || typeof data !== "object") {
     return data;
@@ -234,6 +251,8 @@ const normalizeShiftScheduleDetailsPayload = (data: any) => {
 
       return {
         ...route,
+        pickup_location: normalizeOptionalRouteText(route.pickup_location),
+        dropoff_location: normalizeOptionalRouteText(route.dropoff_location),
         in_schedule: normalizeTimeToLocalHHmm(route.in_schedule),
         from_schedule: normalizeTimeToLocalHHmm(route.from_schedule),
         route_kilometers: normalizeToFloat(route.route_kilometers),

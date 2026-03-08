@@ -42,14 +42,14 @@ interface ShiftRow {
 }
 
 interface ShiftRoute {
-  route?: number;
-  route_kilometers?: number;
-  pickup_location?: string;
-  pickup_route_number?: number;
-  in_schedule?: string;
-  from_schedule?: string;
-  dropoff_location?: string;
-  dropoff_route_number?: number;
+  route?: string | null;
+  route_kilometers?: number | null;
+  pickup_location?: string | null;
+  pickup_route_number?: string | null;
+  in_schedule?: string | null;
+  from_schedule?: string | null;
+  dropoff_location?: string | null;
+  dropoff_route_number?: string | null;
 }
 
 interface ParsedShift {
@@ -65,7 +65,9 @@ interface ParsedShift {
 }
 
 interface ShiftScheduleOption {
-  id: number;
+  id?: string | number;
+  '@id'?: string;
+  iri: string;
   name: string;
 }
 
@@ -86,6 +88,61 @@ export const ShiftsBulkImport = () => {
   const notify = useNotify();
   const redirect = useRedirect();
 
+  const toResourceIri = (value: unknown, resourceName: string): string => {
+    if (!value) {
+      return '';
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return '';
+      }
+
+      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+        try {
+          return new URL(trimmed).pathname;
+        } catch {
+          return trimmed;
+        }
+      }
+
+      if (trimmed.startsWith('/')) {
+        return trimmed;
+      }
+
+      return `/${resourceName}/${trimmed}`;
+    }
+
+    if (typeof value === 'number') {
+      return `/${resourceName}/${value}`;
+    }
+
+    if (typeof value === 'object') {
+      const record = value as { '@id'?: unknown; id?: unknown };
+
+      if (typeof record['@id'] === 'string') {
+        return toResourceIri(record['@id'], resourceName);
+      }
+
+      if (record.id !== undefined && record.id !== null) {
+        return toResourceIri(record.id, resourceName);
+      }
+    }
+
+    return '';
+  };
+
+  const getApiErrorMessage = (error: any): string => {
+    const body = error?.body;
+
+    return body?.detail
+      || body?.['hydra:description']
+      || body?.message
+      || error?.message
+      || 'Неизвестна грешка';
+  };
+
   useEffect(() => {
     const loadShiftSchedules = async () => {
       try {
@@ -95,7 +152,14 @@ export const ShiftsBulkImport = () => {
           filter: {},
         });
 
-        setShiftSchedules(data as ShiftScheduleOption[]);
+        const normalizedSchedules = (Array.isArray(data) ? data : [])
+          .map((schedule: any) => ({
+            ...schedule,
+            iri: toResourceIri(schedule, 'shift_schedules'),
+          }))
+          .filter((schedule): schedule is ShiftScheduleOption => Boolean(schedule?.iri) && typeof schedule?.name === 'string');
+
+        setShiftSchedules(normalizedSchedules);
       } catch (err: any) {
         notify('Грешка при зареждане на графиците за смени', { type: 'error' });
       } finally {
@@ -177,18 +241,33 @@ export const ShiftsBulkImport = () => {
     return Math.round(km * 100) / 100;
   };
 
-  const toOptionalNumber = (value: string): number | undefined => {
+  const toOptionalString = (value: string): string | undefined => {
     const trimmed = (value || '').trim();
     if (!trimmed) {
       return undefined;
     }
 
-    const parsed = Number.parseInt(trimmed, 10);
-    if (Number.isNaN(parsed)) {
-      return undefined;
-    }
+    return trimmed;
+  };
 
-    return parsed;
+  const normalizeOptionalText = (value: string): string | null => {
+    const trimmed = (value || '').trim();
+    return trimmed ? trimmed : null;
+  };
+
+  const normalizeRoutePayload = (routes: ShiftRoute[]): ShiftRoute[] => {
+    return routes
+      .map((route) => ({
+        route: route.route ?? null,
+        route_kilometers: typeof route.route_kilometers === 'number' ? route.route_kilometers : null,
+        pickup_location: route.pickup_location?.trim() || null,
+        pickup_route_number: route.pickup_route_number ?? null,
+        in_schedule: route.in_schedule || null,
+        from_schedule: route.from_schedule || null,
+        dropoff_location: route.dropoff_location?.trim() || null,
+        dropoff_route_number: route.dropoff_route_number ?? null,
+      }))
+      .filter((route) => Object.values(route).some((value) => value !== null));
   };
 
   const parseToShiftModels = (rows: ShiftRow[]): ParsedShift[] => {
@@ -253,14 +332,14 @@ export const ShiftsBulkImport = () => {
         const routeKilometers = hasNewShift ? undefined : parseOptionalKilometers(row.kilometers);
 
         const routeModel: ShiftRoute = {
-          route: toOptionalNumber(row.route),
-          route_kilometers: routeKilometers,
-          pickup_location: row.pickup_location.trim() || undefined,
-          pickup_route_number: toOptionalNumber(row.pickup_route_number),
-          in_schedule: row.in_schedule.trim() ? normalizeTime(row.in_schedule) : undefined,
-          from_schedule: row.from_schedule.trim() ? normalizeTime(row.from_schedule) : undefined,
-          dropoff_location: row.dropoff_location.trim() || undefined,
-          dropoff_route_number: toOptionalNumber(row.dropoff_route_number),
+          route: toOptionalString(row.route) ?? null,
+          route_kilometers: routeKilometers ?? null,
+          pickup_location: normalizeOptionalText(row.pickup_location),
+          pickup_route_number: toOptionalString(row.pickup_route_number) ?? null,
+          in_schedule: row.in_schedule.trim() ? normalizeTime(row.in_schedule) : null,
+          from_schedule: row.from_schedule.trim() ? normalizeTime(row.from_schedule) : null,
+          dropoff_location: normalizeOptionalText(row.dropoff_location),
+          dropoff_route_number: toOptionalString(row.dropoff_route_number) ?? null,
         };
 
         currentShift.routes.push(routeModel);
@@ -407,7 +486,7 @@ export const ShiftsBulkImport = () => {
         });
 
         const createdData = createdSchedule?.data || {};
-        targetScheduleIri = createdData['@id'] || (createdData.id ? `/shift_schedules/${createdData.id}` : '');
+        targetScheduleIri = toResourceIri(createdData, 'shift_schedules');
 
         if (!targetScheduleIri) {
           throw new Error('Неуспешно създаване на график за смени');
@@ -439,7 +518,7 @@ export const ShiftsBulkImport = () => {
               night_work: '00:00',
               kilometers: row.kilometers,
               zero_time: row.zero_time || '0:00',
-              routes: row.routes,
+              routes: normalizeRoutePayload(row.routes),
             }
           });
           successCount++;
@@ -447,7 +526,7 @@ export const ShiftsBulkImport = () => {
           setProgress(Math.round(((i + 1) / shiftModels.length) * 100));
         } catch (err: any) {
           console.error(`Грешка при импорт на ред ${i + 1} (${row.shift_code}):`, err);
-          const errorMsg = err?.body?.['hydra:description'] || err?.message || 'Неизвестна грешка';
+          const errorMsg = getApiErrorMessage(err);
           errors.push(`Ред ${i + 1} (${row.shift_code}): ${errorMsg}`);
           failCount++;
           
@@ -540,7 +619,7 @@ export const ShiftsBulkImport = () => {
                   disabled={isLoading || shiftSchedules.length === 0}
                 >
                   {shiftSchedules.map((schedule: ShiftScheduleOption) => (
-                    <MenuItem key={schedule.id} value={`/shift_schedules/${schedule.id}`}>
+                    <MenuItem key={schedule.iri} value={schedule.iri}>
                       {schedule.name}
                     </MenuItem>
                   ))}
