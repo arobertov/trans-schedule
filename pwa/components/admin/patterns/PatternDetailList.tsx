@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, useMemo } from "react";
+import { useMemo } from "react";
 import {
   List,
   Datagrid,
@@ -10,57 +10,21 @@ import {
   Button,
   useListContext,
   Loading,
-  useDataProvider,
   useGetOne,
 } from "react-admin";
 import { Link } from 'react-router-dom';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
-import ViewModuleIcon from '@mui/icons-material/ViewModule';
-import ViewListIcon from '@mui/icons-material/ViewList';
-import { Box, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
-//import { PatternDetailGrid } from './EditedPDGrid';
-import { PatternDetailGrid } from './PatternDetailGrid';
-
-// Create context for view mode
-const ViewModeContext = createContext<{
-  viewMode: 'table' | 'grid';
-  setViewMode: (mode: 'table' | 'grid') => void;
-}>({
-  viewMode: 'grid',
-  setViewMode: () => { },
-});
+import { Box, Typography } from '@mui/material';
 
 const ListActions = () => {
-  const { viewMode, setViewMode } = useContext(ViewModeContext);
-
   return (
     <TopToolbar>
-      <ToggleButtonGroup
-        value={viewMode}
-        exclusive
-        onChange={(e, newMode) => {
-          if (newMode) {
-            setViewMode(newMode);
-            sessionStorage.setItem('patternDetailViewMode', newMode);
-          }
-        }}
-        size="small"
-      >
-        <ToggleButton value="grid">
-          <ViewModuleIcon fontSize="small" sx={{ mr: 0.5 }} />
-          Таблица
-        </ToggleButton>
-        <ToggleButton value="table">
-          <ViewListIcon fontSize="small" sx={{ mr: 0.5 }} />
-          Списък
-        </ToggleButton>
-      </ToggleButtonGroup>
       <CreateButton />
       <Button
         component={Link}
         to="/patterns/bulk-import"
         label="Масов импорт"
-        icon={<UploadFileIcon />}
+        startIcon={<UploadFileIcon />}
       />
     </TopToolbar>
   );
@@ -86,7 +50,7 @@ const Empty = () => (
         component={Link}
         to="/patterns/bulk-import"
         label="Масов импорт"
-        icon={<UploadFileIcon />}
+        startIcon={<UploadFileIcon />}
       />
     </Box>
   </Box>
@@ -94,8 +58,6 @@ const Empty = () => (
 
 const DetailListContent = () => {
   const { data : listData, isLoading : listLoading, refetch } = useListContext();
-  const { viewMode } = useContext(ViewModeContext);
-  const dataProvider = useDataProvider();
   const patternId = listData?.[0]?.pattern?.['@id'] || listData?.[0]?.pattern;
   const idOnly = typeof patternId === 'string' ? patternId : undefined;
 
@@ -114,58 +76,31 @@ const DetailListContent = () => {
     return <Loading />; 
   }
 
-  // If table mode, show simple list with dynamic columns
-  if (viewMode === 'table') {
-    return (
-      <Datagrid>
-        <NumberField source="position_number" label="Позиция" />
-        {console.log('Rendering columns:', columns)}
-        {columns.map((col: any) => (
-          <FunctionField
-            key={col.id}
-            label={col.label}
-            render={(record: any) => {
-              if (!record || !record.values) return '';
-              return record.values[col.column_name] || '';
-            }}
-          />
-        ))}
-      </Datagrid>
-    );
-  }
-
-  // If grid mode and we have data, show the grid
-  if (viewMode === 'grid' && listData && listData.length > 0) {
-    if (patternId) {
-      return <PatternDetailGrid patternId={patternId} onOrderChange={refetch} />;
-    }
-    return <Loading />;
-  }
-
-  // Fallback to simple datagrid
   return (
     <Datagrid>
       <NumberField source="position_number" label="Позиция" />
-      <TextField source="values" label="Стойности (JSON)" />
+      {columns.map((col: any) => (
+        <FunctionField
+          key={col.id}
+          label={col.label || col.column_name}
+          render={(record: any) => {
+            if (!record || !record.values) return '';
+            return record.values[col.column_name] || '';
+          }}
+        />
+      ))}
+      {columns.length === 0 && <TextField source="values" label="Стойности (JSON)" />}
     </Datagrid>
   );
 };
 
-export const PatternDetailList = () => {
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>(() => {
-    return (sessionStorage.getItem('patternDetailViewMode') as 'table' | 'grid') || 'grid';
-  });
-
-  return (
-    <ViewModeContext.Provider value={{ viewMode, setViewMode }}>
-      <List
-        actions={<ListActions />}
-        empty={<Empty />}
-        pagination={false}
-        sort={{ field: 'position_number', order: 'ASC' }}
-      >
-        <DetailListContent />
-      </List>
-    </ViewModeContext.Provider>
-  );
-};
+export const PatternDetailList = () => (
+  <List
+    actions={<ListActions />}
+    empty={<Empty />}
+    pagination={false}
+    sort={{ field: 'position_number', order: 'ASC' }}
+  >
+    <DetailListContent />
+  </List>
+);

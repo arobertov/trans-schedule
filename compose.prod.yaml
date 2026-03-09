@@ -5,15 +5,24 @@ services:
       context: ./api
       target: frankenphp_prod
     environment:
+      APP_ENV: prod
       APP_SECRET: ${APP_SECRET}
       MERCURE_PUBLISHER_JWT_KEY: ${CADDY_MERCURE_JWT_SECRET}
       MERCURE_SUBSCRIBER_JWT_KEY: ${CADDY_MERCURE_JWT_SECRET}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS}
 
   pwa:
     build:
       context: ./pwa
       target: prod
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_ENTRYPOINT: ${NEXT_PUBLIC_ENTRYPOINT:-http://php}
 
   database:
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-api}
+      MYSQL_USER: ${MYSQL_USER:-api-platform}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports: !reset []

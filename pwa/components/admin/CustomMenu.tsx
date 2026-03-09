@@ -49,7 +49,7 @@ export const CustomMenu = () => {
         primaryText="Служители"
         leftIcon={<PeopleIcon />}
         onClick={handleEmployeesClick}
-        rightIcon={employeesOpen ? <ExpandLess /> : <ExpandMore />}
+        
       />
       
       <Collapse in={employeesOpen && open} timeout="auto" unmountOnExit>
@@ -74,7 +74,7 @@ export const CustomMenu = () => {
         primaryText="График на смените"
         leftIcon={<ScheduleIcon />}
         onClick={handleShiftsClick}
-        rightIcon={shiftsOpen ? <ExpandLess /> : <ExpandMore />}
+        
       />
       
       <Collapse in={shiftsOpen && open} timeout="auto" unmountOnExit>

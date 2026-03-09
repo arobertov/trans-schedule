@@ -2,41 +2,16 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  allowedDevOrigins: ['metroteam.tail358c67.ts.net'],
   transpilePackages: [
     'react-admin',
-    'ra-core',
+    'ra-core', '@mui/icons-material', '@mui/material',
     'ra-ui-materialui',
     'ra-data-simple-rest',
     'ra-language-english',
     'date-fns',
     '@api-platform/admin'
   ],
-  experimental: {
-   // Enable ESM support in Webpack 5
-   esmExternals: true,
-   // Enable Turbopack for development (optional, can be removed if not needed)
-   turbo: true,
-   // Enable Webpack 5 (should be default in Next.js 12+)
-   webpack5: true,
-   // Enable React Server Components (optional, can be removed if not needed)
-   serverComponents: true,
-   // Enable SWC minification (should be default in Next.js 12+)
-   swcMinify: true,
-   // Enable the new image optimization engine (optional, can be removed if not needed)
-   images: {
-     unoptimized: true,
-   },
-   // Enable the new font optimization engine (optional, can be removed if not needed)
-   fonts: {
-     optimize: true,
-   },
-   // Enable the new middleware engine (optional, can be removed if not needed)
-   middleware: {
-     experimental: true,
-   },
-    // Enable the new app directory (optional, can be removed if not needed)
-    appDir: true, 
-  },
   webpack: (config, { isServer }) => {
     // Handle ESM packages properly
     if (!isServer) {
@@ -53,6 +28,15 @@ const nextConfig = {
       '.js': ['.js', '.ts', '.tsx', '.jsx'],
       '.mjs': ['.mjs', '.mts'],
       '.cjs': ['.cjs', '.cts'],
+    };
+
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      // Optional native addon; safe to ignore in browser bundles.
+      'rdf-canonize-native': false,
+      // ky-universal expects this legacy export path.
+      'web-streams-polyfill/ponyfill/es2018': 'web-streams-polyfill/ponyfill/es2018',
+      '@mui/icons-material': '@mui/icons-material/esm',
     };
 
     return config;

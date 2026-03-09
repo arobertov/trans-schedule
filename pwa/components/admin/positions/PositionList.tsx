@@ -1,10 +1,11 @@
-import { ListGuesser, FieldGuesser } from "@api-platform/admin";
-import {NumberField} from "react-admin";
+import { List, Datagrid, NumberField, TextField } from "react-admin";
 
 export const PositionsList = () => (
-    <ListGuesser>
-        <FieldGuesser source="name" label="Длъжност"/>
-        <NumberField source="employees.length"  label="Брой служители"/>
-        <FieldGuesser source="description" label="Описание"/>
-    </ListGuesser>
+    <List>
+        <Datagrid rowClick="show">
+            <TextField source="name" label="Длъжност"/>
+            <NumberField source="employees.length"  label="Брой служители"/>
+            <TextField source="description" label="Описание"/>
+        </Datagrid>
+    </List>
 );

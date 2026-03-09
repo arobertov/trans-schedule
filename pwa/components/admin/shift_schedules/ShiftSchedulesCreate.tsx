@@ -1,8 +1,10 @@
-import { CreateGuesser, InputGuesser } from "@api-platform/admin";
+import { Create, SimpleForm, TextInput } from "react-admin";
 
 export const ShiftSchedulesCreate = () => (
-    <CreateGuesser>
-        <InputGuesser source="name" label="Име на графика за смените" />
-        <InputGuesser source="description" label="Описание на графика за смените" />
-    </CreateGuesser>
+    <Create>
+        <SimpleForm>
+            <TextInput source="name" label="Име на графика за смените" fullWidth />
+            <TextInput source="description" label="Описание на графика за смените" fullWidth multiline />
+        </SimpleForm>
+    </Create>
 );

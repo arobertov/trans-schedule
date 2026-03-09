@@ -21,6 +21,76 @@ and [Kubernetes](https://api-platform.com/docs/deployment/kubernetes).
 
 The official project documentation is available **[on the API Platform website](https://api-platform.com)**.
 
+## Project Workflow
+
+This repository contains:
+
+* `api/` - Symfony 7.2 + API Platform backend
+* `pwa/` - Next.js 15 admin and frontend
+* `e2e/` - Playwright tests
+
+### Recommended Development Setup
+
+Use the VS Code dev container in `.devcontainer/devcontainer.json`.
+
+It gives you:
+
+* PHP tooling from the `php` container
+* Node.js and `pnpm` inside the same VS Code environment
+* predictable paths for both backend and frontend code intelligence
+
+Open the repository in VS Code and run `Dev Containers: Reopen in Container`.
+
+After the first start, the dev container installs:
+
+* backend dependencies with `composer install`
+* frontend dependencies with `pnpm install`
+
+### Local Docker Commands
+
+Start the stack:
+
+```bash
+docker compose up -d --build
+```
+
+Install backend dependencies:
+
+```bash
+docker compose exec -T php composer install
+```
+
+Install frontend dependencies:
+
+```bash
+docker compose exec -T pwa pnpm install
+```
+
+Run frontend lint:
+
+```bash
+docker compose exec -T pwa pnpm lint
+```
+
+### Environment Variables
+
+Use `.env.docker.example` as the base for Docker-driven environments. Do not commit real production secrets.
+
+### Production Notes
+
+Before a production deployment:
+
+* provide real values for `APP_SECRET`, `CADDY_MERCURE_JWT_SECRET`, `MYSQL_PASSWORD`, and `MYSQL_ROOT_PASSWORD`
+* set `TRUSTED_HOSTS` for the real public domain
+* keep the database port unexposed externally unless there is a clear operational reason
+* build with `compose.yaml` and `compose.prod.yaml`
+
+Example:
+
+```bash
+docker compose -f compose.yaml -f compose.prod.yaml --env-file .env.docker up -d --build
+```
+
 API Platform embraces open web standards and the
 [Linked Data](https://www.w3.org/standards/semanticweb/data) movement. Your API will automatically expose structured data.
 It means that your API Platform application is usable **out of the box** with technologies of

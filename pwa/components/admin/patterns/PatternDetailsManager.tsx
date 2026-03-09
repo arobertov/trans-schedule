@@ -1,24 +1,18 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import {
   Datagrid,
   NumberField,
   FunctionField,
   ReferenceManyField,
   useRecordContext,
-  useGetOne,
-  Loading,
   Button
 } from "react-admin";
-import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
-import ViewModuleIcon from '@mui/icons-material/ViewModule';
-import ViewListIcon from '@mui/icons-material/ViewList';
+import { Box, Typography } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { Link } from 'react-router-dom';
-import { PatternDetailGrid } from './PatternDetailGrid';
 
 export const PatternDetailsManager = () => {
   const record = useRecordContext();
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
 
   // We need to fetch the pattern again or use record to get columns? 
   // record from useRecordContext in Show view should have the data if it was fetched.
@@ -37,26 +31,6 @@ export const PatternDetailsManager = () => {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h6">Детайли на порядъка</Typography>
         <Box display="flex" gap={2}>
-            <ToggleButtonGroup
-            value={viewMode}
-            exclusive
-            onChange={(e, newMode) => {
-                if (newMode) {
-                setViewMode(newMode);
-                }
-            }}
-            size="small"
-            >
-            <ToggleButton value="grid">
-                <ViewModuleIcon fontSize="small" sx={{ mr: 0.5 }} />
-                Таблица
-            </ToggleButton>
-            <ToggleButton value="table">
-                <ViewListIcon fontSize="small" sx={{ mr: 0.5 }} />
-                Списък
-            </ToggleButton>
-            </ToggleButtonGroup>
-            
             <Button
                 component={Link}
                 to={{
@@ -77,32 +51,28 @@ export const PatternDetailsManager = () => {
         </Box>
       </Box>
 
-      {viewMode === 'table' ? (
-        <ReferenceManyField 
-            key={record.id}
-            reference="order_pattern_details" 
-            target="pattern" 
-            filter={{ pattern: record.id }} 
-            sort={{ field: 'position_number', order: 'ASC' }}
-            pagination={false}
-        >
-          <Datagrid>
-            <NumberField source="position_number" label="Позиция" />
-            {columns.map((col: any) => (
-              <FunctionField
-                key={col.id}
-                label={col.label || col.column_name}
-                render={(detailRecord: any) => {
-                  if (!detailRecord || !detailRecord.values) return '';
-                  return detailRecord.values[col.column_name] || '';
-                }}
-              />
-            ))}
-          </Datagrid>
-        </ReferenceManyField>
-      ) : (
-        <PatternDetailGrid key={record.id} patternId={record.id} />
-      )}
+      <ReferenceManyField 
+          key={record.id}
+          reference="order_pattern_details" 
+          target="pattern" 
+          filter={{ pattern: record.id }} 
+          sort={{ field: 'position_number', order: 'ASC' }}
+          pagination={false}
+      >
+        <Datagrid>
+          <NumberField source="position_number" label="Позиция" />
+          {columns.map((col: any) => (
+            <FunctionField
+              key={col.id}
+              label={col.label || col.column_name}
+              render={(detailRecord: any) => {
+                if (!detailRecord || !detailRecord.values) return '';
+                return detailRecord.values[col.column_name] || '';
+              }}
+            />
+          ))}
+        </Datagrid>
+      </ReferenceManyField>
     </Box>
   );
 };

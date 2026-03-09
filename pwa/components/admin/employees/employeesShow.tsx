@@ -1,5 +1,4 @@
-import { ShowGuesser, FieldGuesser } from "@api-platform/admin";
-import { FunctionField, ChipField, TextField, DateField, ReferenceField } from "react-admin";
+import { Show, SimpleShowLayout, FunctionField, ChipField, TextField, DateField, ReferenceField } from "react-admin";
 import { Stack, Box, Grid, Paper, Typography, Divider } from "@mui/material";
 import PersonIcon from '@mui/icons-material/Person';
 import WorkIcon from '@mui/icons-material/Work';
@@ -8,9 +7,8 @@ import EmailIcon from '@mui/icons-material/Email';
 import NotesIcon from '@mui/icons-material/Notes';
 import { Link } from 'react-router-dom';
 export const EmployeesShow = () => (
-
-
-    <ShowGuesser>
+    <Show>
+        <SimpleShowLayout>
         <Box sx={{ p: 2 }}>
             <Grid container spacing={3}>
                 {/* Основна информация */}
@@ -157,5 +155,6 @@ export const EmployeesShow = () => (
                 </Grid>
             </Grid>
         </Box>
-    </ShowGuesser>
+        </SimpleShowLayout>
+    </Show>
 );

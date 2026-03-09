@@ -27,14 +27,14 @@ FROM base AS dev
 # Копирай файловете за инсталация на зависимости
 COPY package.json pnpm-lock.yaml ./ 
 # Инсталирай всички зависимости за development и runtime
-RUN pnpm install --frozen-lockfile --no-optional
+RUN pnpm install --frozen-lockfile
 # --- КРАЙ НА ДОБАВКАТА ---
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=localhost
 
-CMD ["sh", "-c", "pnpm install; pnpm dev"]
+CMD ["pnpm", "dev"]
 
 
 FROM base AS builder

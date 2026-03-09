@@ -1,9 +1,5 @@
 {
-  "javascript.validate.enable": false,
-  "typescript.validate.enable": false,
-  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
-  "typescript.preferences.includePackageJsonAutoImports": "off",
-  "eslint.enable": false,
+  "typescript.preferences.includePackageJsonAutoImports": "on",
   "eslint.packageManager": "pnpm",
   "eslint.workingDirectories": [
     {
@@ -12,7 +8,7 @@
     }
   ],
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": false
+    "source.fixAll.eslint": "explicit"
   },
   "[javascript]": {
     "editor.defaultFormatter": "vscode.typescript-language-features"
@@ -25,5 +21,11 @@
   },
   "[typescriptreact]": {
     "editor.defaultFormatter": "vscode.typescript-language-features"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "/^mv pwa/components/admin/App\\.tsx pwa/components/admin/App\\.tsx\\.backup2 && cat << 'EOF' > pwa/components/admin/App\\.tsx\nimport \\* as React from \"react\";\nimport \\{ HydraAdmin, hydraDataProvider, fetchHydra \\} from \"@api-platform/admin\";\nimport \\{ Dashboard \\} from \"\\./Dashboard\";\nimport \\{ CustomLayout \\} from \"\\./CustomLayout\";\nimport i18nProvider from \"\\./i18n\";\nimport \\{ defaultTheme \\} from 'react-admin';\n\nconst AnyHydraAdmin: any = HydraAdmin;\n\nconst theme = \\{\n    \\.\\.\\.defaultTheme,\n    typography: \\{ fontFamily: '\"Sofia Sans\", sans-serif' \\},\n\\};\n\nconst App = \\(\\) => \\{\n  const dataProvider = hydraDataProvider\\(\\{\n    entrypoint: window\\.origin,\n    httpClient: fetchHydra,\n  \\}\\);\n\n  return \\(\n    <AnyHydraAdmin\n      entrypoint=\\{window\\.origin\\}\n      title=\"API Platform Admin\"\n      dataProvider=\\{dataProvider\\}\n      dashboard=\\{Dashboard\\}\n      layout=\\{CustomLayout\\}\n      i18nProvider=\\{i18nProvider\\}\n      theme=\\{theme\\}\n    />\n  \\);\n\\};\nexport default App;\nEOF$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
   }
 }

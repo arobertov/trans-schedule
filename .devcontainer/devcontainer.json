@@ -1,0 +1,35 @@
+{
+  "name": "trans-schedule",
+  "dockerComposeFile": [
+    "../compose.yaml",
+    "../compose.override.yaml"
+  ],
+  "service": "php",
+  "runServices": [
+    "database",
+    "php",
+    "pwa"
+  ],
+  "workspaceFolder": "/workspaces/trans-schedule",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/trans-schedule,type=bind",
+  "shutdownAction": "stopCompose",
+  "overrideCommand": false,
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts",
+      "pnpm": "latest"
+    }
+  },
+  "postCreateCommand": "bash -lc 'cd /workspaces/trans-schedule/api && composer install && cd /workspaces/trans-schedule/pwa && pnpm install'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "github.copilot-chat",
+        "xdebug.php-debug",
+        "dbaeumer.vscode-eslint",
+        "bmewburn.vscode-intelephense-client",
+        "ms-vscode.vscode-typescript-next"
+      ]
+    }
+  }
+}

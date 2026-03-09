@@ -1,8 +1,7 @@
 import type { NextPage } from "next";
 import dynamic from "next/dynamic";
 
-// load the admin client-side
-const App = dynamic(() => import("../../components/admin/App"), {
+const App = dynamic(() => import("../../components/admin/App").then((mod) => mod.default), {
   ssr: false,
   loading: () => <p>Loading...</p>,
 });

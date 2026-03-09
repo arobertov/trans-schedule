@@ -1,8 +1,8 @@
-import { EditGuesser, InputGuesser } from "@api-platform/admin";
-import { TextInput, TimeInput, NumberInput, ReferenceInput, SelectInput, ArrayInput, SimpleFormIterator } from "react-admin";
+import { Edit, SimpleForm, TextInput, TimeInput, NumberInput, ReferenceInput, SelectInput, ArrayInput, SimpleFormIterator } from "react-admin";
 
 export const ShiftsEdit = () => (
-    <EditGuesser>
+    <Edit>
+        <SimpleForm>
         <ReferenceInput source="shift_schedule" reference="shift_schedules">
             <SelectInput
                 optionText="name"
@@ -25,7 +25,7 @@ export const ShiftsEdit = () => (
                 parse={(value: any) => value}
             />
         </ReferenceInput>
-        <InputGuesser source="shift_code" />
+        <TextInput source="shift_code" label="Код на смяна" />
         <TimeInput source="at_doctor" label="При лекар" />
         <TimeInput source="at_duty_officer" label="При дежурен" />
         <TimeInput source="shift_end" label="Край на смяната" />
@@ -46,5 +46,6 @@ export const ShiftsEdit = () => (
                 <TextInput source="dropoff_route_number" label="Път № (слизане)" />
             </SimpleFormIterator>
         </ArrayInput>
-    </EditGuesser>
+        </SimpleForm>
+    </Edit>
 );

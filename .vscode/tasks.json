@@ -2,6 +2,50 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Docker: Up (dev)",
+            "type": "shell",
+            "command": "docker compose up -d --build",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "PWA: Install Dependencies",
+            "type": "shell",
+            "command": "docker compose exec -T pwa pnpm install",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "PWA: Lint",
+            "type": "shell",
+            "command": "docker compose exec -T pwa pnpm lint",
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "API: Composer Install",
+            "type": "shell",
+            "command": "docker compose exec -T php composer install",
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "Symfony: Clear Cache (dev)",
             "type": "shell",
             "command": "docker compose exec -T php php bin/console cache:clear --env=dev --no-warmup",

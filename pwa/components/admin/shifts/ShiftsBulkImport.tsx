@@ -71,6 +71,51 @@ interface ShiftScheduleOption {
   name: string;
 }
 
+const toResourceIri = (value: unknown, resourceName: string): string => {
+  if (!value) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      try {
+        return new URL(trimmed).pathname;
+      } catch {
+        return trimmed;
+      }
+    }
+
+    if (trimmed.startsWith('/')) {
+      return trimmed;
+    }
+
+    return `/${resourceName}/${trimmed}`;
+  }
+
+  if (typeof value === 'number') {
+    return `/${resourceName}/${value}`;
+  }
+
+  if (typeof value === 'object') {
+    const record = value as { '@id'?: unknown; id?: unknown };
+
+    if (typeof record['@id'] === 'string') {
+      return toResourceIri(record['@id'], resourceName);
+    }
+
+    if (record.id !== undefined && record.id !== null) {
+      return toResourceIri(record.id, resourceName);
+    }
+  }
+
+  return '';
+};
+
 export const ShiftsBulkImport = () => {
   const [pastedData, setPastedData] = useState('');
   const [parsedRows, setParsedRows] = useState<ShiftRow[]>([]);
@@ -87,51 +132,6 @@ export const ShiftsBulkImport = () => {
   const dataProvider = useDataProvider();
   const notify = useNotify();
   const redirect = useRedirect();
-
-  const toResourceIri = (value: unknown, resourceName: string): string => {
-    if (!value) {
-      return '';
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) {
-        return '';
-      }
-
-      if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        try {
-          return new URL(trimmed).pathname;
-        } catch {
-          return trimmed;
-        }
-      }
-
-      if (trimmed.startsWith('/')) {
-        return trimmed;
-      }
-
-      return `/${resourceName}/${trimmed}`;
-    }
-
-    if (typeof value === 'number') {
-      return `/${resourceName}/${value}`;
-    }
-
-    if (typeof value === 'object') {
-      const record = value as { '@id'?: unknown; id?: unknown };
-
-      if (typeof record['@id'] === 'string') {
-        return toResourceIri(record['@id'], resourceName);
-      }
-
-      if (record.id !== undefined && record.id !== null) {
-        return toResourceIri(record.id, resourceName);
-      }
-    }
-
-    return '';
-  };
 
   const getApiErrorMessage = (error: any): string => {
     const body = error?.body;
@@ -587,7 +587,7 @@ export const ShiftsBulkImport = () => {
           <br />
           <strong>Колони (в този ред):</strong> № | Смяна | При лекар | При деж. | Маршрут | Място (качване) | Път № | В график | От график | Място (слизане) | Път № | Край | Раб. вр. | Км. | Нул. време
           <br />
-          <strong>Бележка:</strong> Редове без стойност в "Смяна" се приемат като продължение на предишната смяна (вложени маршрути).
+          <strong>Бележка:</strong> Редове без стойност в &quot;Смяна&quot; се приемат като продължение на предишната смяна (вложени маршрути).
         </Typography>
 
         <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -652,7 +652,7 @@ export const ShiftsBulkImport = () => {
 
         {scheduleMode === 'existing' && shiftSchedules.length === 0 && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Няма налични графици за смени. Изберете режим "Създаване на нов график" или създайте график предварително.
+            Няма налични графици за смени. Изберете режим &quot;Създаване на нов график&quot; или създайте график предварително.
           </Alert>
         )}
 

@@ -1,5 +1,4 @@
-import { FieldGuesser } from "@api-platform/admin";
-import { List, Datagrid, useListContext, useRecordContext, TopToolbar, CreateButton, Button, Identifier } from "react-admin";
+import { List, Datagrid, useListContext, useRecordContext, TopToolbar, CreateButton, Button, TextField, DateField } from "react-admin";
 import { Box, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import UploadIcon from '@mui/icons-material/Upload';
@@ -11,7 +10,7 @@ const ListActions = () => (
             component={Link}
             to="/shifts/bulk-import"
             label="Масов импорт"
-            icon={<UploadIcon />}
+            startIcon={<UploadIcon />}
         />
     </TopToolbar>
 );
@@ -22,7 +21,7 @@ const Empty = () => (
             Няма въведени графици за смяна!
         </Typography>
         <Typography variant="body2" paragraph color="textSecondary">
-            Можете да създадете график за смяна, като кликнете на бутона "Създай" по-долу!
+            Можете да създадете график за смяна, като кликнете на бутона &quot;Създай&quot; по-долу!
         </Typography>
         <Box mt={2} display="flex" gap={2} justifyContent="center">
             {/* without the bulk import button, as it doesn't make sense to show it when there are no records */}
@@ -47,9 +46,9 @@ export const ShiftSchedulesList = () => (
     >
         <Datagrid rowClick="show">
             <RowNumberField />
-            <FieldGuesser source="name" label="Име на графика за смените" />
-            <FieldGuesser source="description" label="Описание на графика за смените" />
-            <FieldGuesser source="created_at" label="Създаден на" />
+            <TextField source="name" label="Име на графика за смените" />
+            <TextField source="description" label="Описание на графика за смените" />
+            <DateField source="created_at" label="Създаден на" showTime />
         </Datagrid>
     </List>
 );

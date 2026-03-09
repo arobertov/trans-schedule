@@ -1,7 +1,5 @@
-import { FieldGuesser } from "@api-platform/admin";
 import {
     useListContext,
-    FunctionField,
     TopToolbar,
     SelectColumnsButton,
     CreateButton,
@@ -11,7 +9,10 @@ import {
     ReferenceField,
     FilterList,
     FilterListItem,
-    useGetList
+    useGetList,
+    TextField,
+    DateField,
+    useRecordContext,
 } from "react-admin";
 import { Link } from 'react-router-dom';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -30,7 +31,7 @@ const ListActions = () => (
             component={Link}
             to="/employees/bulk-import"
             label="Масов импорт"
-            icon={<UploadFileIcon />}
+            startIcon={<UploadFileIcon />}
         />
     </TopToolbar>
 );
@@ -56,7 +57,7 @@ const Empty = () => (
                 component={Link}
                 to="/employees/bulk-import"
                 label="Масов импорт"
-                icon={<UploadFileIcon />}
+                startIcon={<UploadFileIcon />}
             />
         </Box>
     </Box>
@@ -86,6 +87,20 @@ const PositionFilters = () => {
     );
 };
 
+const RowNumberField = () => {
+    const record = useRecordContext();
+    const { data, page, perPage } = useListContext();
+    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
+
+    if (index === -1) {
+        return <span>-</span>;
+    }
+
+    const offset = (page - 1) * perPage;
+
+    return <span>{offset + index + 1}</span>;
+};
+
 export const EmployeesList = () => (
     <List
         actions={<ListActions />}
@@ -93,27 +108,17 @@ export const EmployeesList = () => (
         aside={<PositionFilters />}
     >
         <DatagridConfigurable>
-            <FunctionField
-                label="№"
-                render={(record: any) => {
-                    const { data, page, perPage } = useListContext();
-                    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
-                    if (index === -1) return '-';
-                    const offset = (page - 1) * perPage;
-                    return offset + index + 1;
-                }}
-                textAlign="center"
-            />
-            <FieldGuesser source="first_name" label="Име" />
-            <FieldGuesser source="middle_name" label="Презиме" />
-            <FieldGuesser source="last_name" label="Фамилия" />
-            <FieldGuesser source="phone" label="Телефон" />
-            <FieldGuesser source="email" label="Имейл" />
-            <FieldGuesser source="created_at" label="Добавен на" />
-            <FieldGuesser source="updated_at" label="Обновен на" />
-            <FieldGuesser source="status" label="Статус" />
+            <RowNumberField />
+            <TextField source="first_name" label="Име" />
+            <TextField source="middle_name" label="Презиме" />
+            <TextField source="last_name" label="Фамилия" />
+            <TextField source="phone" label="Телефон" />
+            <TextField source="email" label="Имейл" />
+            <DateField source="created_at" label="Добавен на" showTime />
+            <DateField source="updated_at" label="Обновен на" showTime />
+            <TextField source="status" label="Статус" />
             <ReferenceField source="position" reference="positions" label="Длъжност" link={false} emptyText="-">
-                <FieldGuesser source="name" />
+                <TextField source="name" />
             </ReferenceField>
         </DatagridConfigurable>
     </List>

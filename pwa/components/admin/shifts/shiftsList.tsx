@@ -1,5 +1,4 @@
-import { FieldGuesser } from "@api-platform/admin";
-import { List, Datagrid, FunctionField, useListContext, TopToolbar, CreateButton, Button, FilterList, FilterListItem, ReferenceField, useGetList } from "react-admin";
+import { List, Datagrid, FunctionField, useListContext, useRecordContext, TopToolbar, CreateButton, Button, FilterList, FilterListItem, ReferenceField, useGetList, TextField } from "react-admin";
 import { Link } from 'react-router-dom';
 import UploadIcon from '@mui/icons-material/Upload';
 import { Box, Typography, Card, CardContent } from '@mui/material';
@@ -13,7 +12,7 @@ const ListActions = () => (
             component={Link}
             to="/shifts/bulk-import"
             label="Масов импорт"
-            icon={<UploadIcon />}
+            startIcon={<UploadIcon />}
         />
     </TopToolbar>
 );
@@ -55,12 +54,26 @@ const Empty = () => (
                 component={Link}
                 to="/shifts/bulk-import"
                 label="Масов импорт от Excel"
-                icon={<UploadIcon />}
+                startIcon={<UploadIcon />}
                 variant="contained"
             />
         </Box>
     </Box>
 );
+
+const RowNumberField = () => {
+    const record = useRecordContext();
+    const { data, page, perPage } = useListContext();
+    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
+
+    if (index === -1) {
+        return <span>-</span>;
+    }
+
+    const offset = (page - 1) * perPage;
+
+    return <span>{offset + index + 1}</span>;
+};
 
 
 export const ShiftsList = () => (
@@ -70,22 +83,12 @@ export const ShiftsList = () => (
         aside={<ShiftFilters />}
     >
         <Datagrid>
-            <FunctionField
-                label="№"
-                render={(record: any) => {
-                    const { data, page, perPage } = useListContext();
-                    const index = data?.findIndex((item: any) => item.id === record?.id) ?? -1;
-                    if (index === -1) return '-';
-                    const offset = (page - 1) * perPage;
-                    return offset + index + 1;
-                }}
-                textAlign="center"
-            />
+            <RowNumberField />
 
             <ReferenceField source="shift_schedule" reference="shift_schedules" label="График на смените" link="show">
-                <FieldGuesser source="name"/>
+                <TextField source="name"/>
             </ReferenceField>
-            <FieldGuesser source="shift_code" label="Код на смяна" />
+            <TextField source="shift_code" label="Код на смяна" />
             <FunctionField
                 source="at_doctor"
                 label="При лекар"
