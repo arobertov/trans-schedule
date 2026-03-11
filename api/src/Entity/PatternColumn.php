@@ -17,7 +17,6 @@ use ApiPlatform\Metadata\ApiProperty;
 )]
 #[ORM\Entity(repositoryClass: PatternColumnRepository::class)]
 #[ORM\Table(name: 'pattern_columns')]
-#[ORM\UniqueConstraint(name: 'unique_column_per_pattern', columns: ['pattern_id', 'column_number'])]
 class PatternColumn
 {
     #[ORM\Id]

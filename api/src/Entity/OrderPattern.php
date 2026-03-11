@@ -14,6 +14,7 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use ApiPlatform\Metadata\ApiProperty;
 
 #[ApiResource(
@@ -65,6 +66,7 @@ class OrderPattern
     #[ORM\OneToMany(targetEntity: PatternColumn::class, mappedBy: 'pattern', cascade: ['persist', 'remove'], orphanRemoval: true)]
     #[ORM\OrderBy(['column_number' => 'ASC'])]
     #[Groups(['pattern:read', 'pattern:write'])] // ДОБАВЕНО pattern:write
+    #[Assert\Valid]
     private Collection $columns;
 
     #[ORM\OneToMany(targetEntity: OrderPatternDetails::class, mappedBy: 'pattern', cascade: ['persist', 'remove'], orphanRemoval: true)]
@@ -79,6 +81,23 @@ class OrderPattern
     #[ORM\Column(type: 'datetime', nullable: true)]
     #[Groups(['pattern:read'])]
     private ?\DateTimeInterface $updated_at = null;
+
+    #[Assert\Callback]
+    public function validateColumns(ExecutionContextInterface $context, mixed $payload): void
+    {
+        $numbers = [];
+        foreach ($this->columns as $column) {
+            $num = $column->getColumnNumber();
+            if (in_array($num, $numbers)) {
+                $context->buildViolation('Номерът на колоната {{ number }} се повтаря.')
+                    ->setParameter('{{ number }}', (string) $num)
+                    ->atPath('columns')
+                    ->addViolation();
+                return;
+            }
+            $numbers[] = $num;
+        }
+    }
 
     public function __construct()
     {
