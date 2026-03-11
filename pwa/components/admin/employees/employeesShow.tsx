@@ -1,4 +1,4 @@
-import { Show, SimpleShowLayout, FunctionField, ChipField, TextField, DateField, ReferenceField } from "react-admin";
+import { Show, SimpleShowLayout, FunctionField, ChipField, TextField, DateField, ReferenceField, TopToolbar, ListButton, EditButton } from "react-admin";
 import { Stack, Box, Grid, Paper, Typography, Divider } from "@mui/material";
 import PersonIcon from '@mui/icons-material/Person';
 import WorkIcon from '@mui/icons-material/Work';
@@ -6,8 +6,17 @@ import ContactPhoneIcon from '@mui/icons-material/ContactPhone';
 import EmailIcon from '@mui/icons-material/Email';
 import NotesIcon from '@mui/icons-material/Notes';
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
+
+const EmployeesShowActions = () => (
+    <TopToolbar>
+        <ListButton label="Назад към списъка" />
+        <EditButton label="Редактирай" />
+    </TopToolbar>
+);
+
 export const EmployeesShow = () => (
-    <Show>
+    <Show actions={<EmployeesShowActions />}>
         <SimpleShowLayout>
         <Box sx={{ p: 2 }}>
             <Grid container spacing={3}>
@@ -30,7 +39,6 @@ export const EmployeesShow = () => (
                                         <Typography
                                             variant="h5"
                                             fontWeight="bold"
-                                            color="secondary"
                                             sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
                                         >
                                             {record.first_name}
@@ -90,14 +98,20 @@ export const EmployeesShow = () => (
                             <ReferenceField source="position" reference="positions" />
                             <FunctionField
                                 label="Статус"
-                                render={(record: any) => (
-                                     <ChipField
-                                        record={{ value: record.status === 'active' ? 'Активен' : 'Неактивен' }}   
-                                        source="value"
-                                        color={record.status === 'active' ? 'success' : 'error'}
-                                        variant="outlined"
-                                    />
-                                )}
+                                render={(record: any) => {
+                                    const status = String(record?.status ?? "");
+                                    const statusLabel = status
+                                        ? `${status.charAt(0).toUpperCase()}${status.slice(1)}`
+                                        : "";
+
+                                    return (
+                                        <ChipField
+                                            record={{ value: statusLabel }}
+                                            source="value"
+                                            color={status.toLowerCase() === "активен" ? "success" : "error"}
+                                        />
+                                    );
+                                }}
                             />
                         </Stack>
                     </Paper>
@@ -114,7 +128,31 @@ export const EmployeesShow = () => (
                         <Stack spacing={2}>
                             <Stack direction="row" spacing={1} alignItems="center">
                                 <ContactPhoneIcon fontSize="small" color="action" />
-                                <ChipField source="phone" label="Телефон" color="success" />
+                                <FunctionField
+                                    label="Телефон"
+                                    render={(record: any) => {
+                                        const rawPhone = record?.phone ?? '';
+                                        const normalized = String(rawPhone).replace(/\s+/g, '');
+
+                                        const localPhone = normalized.startsWith('')
+                                            ? `0${normalized.slice(4)}`
+                                            : normalized;
+
+                                        const match = localPhone.match(/^0(8\d{2})(\d{3})(\d{3})$/);
+
+                                        const formattedPhone = match
+                                            ? `0${match[1]} ${match[2]} ${match[3]}`
+                                            : rawPhone;
+
+                                        return (
+                                            <ChipField
+                                                record={{ value: formattedPhone }}
+                                                source="value"
+                                                color="success"
+                                            />
+                                        );
+                                    }}
+                                />
                             </Stack>
                             <Stack direction="row" spacing={1} alignItems="center">
                                 <EmailIcon fontSize="small" color="action" />

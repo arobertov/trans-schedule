@@ -390,10 +390,17 @@ export const ShiftsBulkImport = () => {
       lines.forEach((line, index) => {
         const columns = line.split('\t').map(col => col.trim());
 
+        // Пропускаме заглавни редове
         if (
           (columns[0] || '').toLowerCase() === '№'
           || (columns[1] || '').toLowerCase().includes('смяна')
         ) {
+          return;
+        }
+
+        // Пропускаме напълно празни редове (всички клетки празни)
+        const hasAnyContent = columns.some(col => col && col.trim() !== '');
+        if (!hasAnyContent) {
           return;
         }
 
