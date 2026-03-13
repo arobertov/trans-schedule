@@ -38,7 +38,7 @@ import {
 } from "./patterns";
 import { MatrixList, MatrixCreate, MatrixShow, MatrixEdit } from "./matrices";
 import { MonthlyScheduleList, MonthlyScheduleCreate, MonthlyScheduleEdit } from "./monthly_schedules";
-import { CalendarList, CalendarCreate, CalendarShow, CalendarEdit } from "./calendars"; 
+import { CalendarList, CalendarCreate, CalendarShow, CalendarEdit } from "./calendars";
 import { defaultTheme } from 'react-admin';
 import { TrainScheduleList } from "./train_schedules/TrainScheduleList";
 import { TrainScheduleCreate } from "./train_schedules/TrainScheduleCreate";
@@ -52,20 +52,20 @@ import { TrainDiagramShow } from "./train_diagrams/TrainDiagramShow";
 const AnyHydraAdmin: any = HydraAdmin;
 
 const theme = {
-    ...defaultTheme,
-    typography: {
-        fontFamily: '"Sofia Sans", sans-serif',
-    },
-    components: {
-        ...defaultTheme.components,
-        MuiTypography: {
-            styleOverrides: {
-                root: {
-                    fontFamily: '"Sofia Sans", sans-serif',
-                },
-            },
+  ...defaultTheme,
+  typography: {
+    fontFamily: '"Sofia Sans", sans-serif',
+  },
+  components: {
+    ...defaultTheme.components,
+    MuiTypography: {
+      styleOverrides: {
+        root: {
+          fontFamily: '"Sofia Sans", sans-serif',
         },
+      },
     },
+  },
 };
 
 // Wrap fetchHydra to add JWT token

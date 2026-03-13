@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useDataProvider, useNotify, useRecordContext, useUpdate } from 'react-admin';
-import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, List, ListItem, ListItemText, ListItemSecondaryAction } from '@mui/material';
+import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, List, ListItem, ListItemText, ListItemSecondaryAction, GlobalStyles } from '@mui/material';
 import { Fullscreen, FullscreenExit, Delete as DeleteIcon, PersonAdd } from '@mui/icons-material';
 import "@univerjs/design/lib/index.css";
 import "@univerjs/ui/lib/index.css";
@@ -251,6 +251,32 @@ export const UniverScheduleGrid = () => {
             window.localStorage.setItem(MATRIX_COLORS_STORAGE_KEY, JSON.stringify(matrixValidationColors));
         } catch {}
     }, [matrixValidationColors]);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(Boolean(document.fullscreenElement));
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+        };
+    }, []);
+
+    useEffect(() => {
+        const className = 'monthly-schedule-fullscreen';
+
+        if (isFullscreen) {
+            document.body.classList.add(className);
+        } else {
+            document.body.classList.remove(className);
+        }
+
+        return () => {
+            document.body.classList.remove(className);
+        };
+    }, [isFullscreen]);
 
     useEffect(() => {
         return () => {
@@ -1519,23 +1545,37 @@ export const UniverScheduleGrid = () => {
         }
     };
 
-    const toggleFullscreen = () => {
-        setIsFullscreen(!isFullscreen);
-        setTimeout(() => {
+    const toggleFullscreen = async () => {
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+        } else {
+            await document.documentElement.requestFullscreen();
+        }
+
+        window.setTimeout(() => {
             window.dispatchEvent(new Event('resize'));
-        }, 100);
+        }, 120);
     };
 
     return (
-        <Box 
-            position={isFullscreen ? "fixed" : "relative"}
-            top={isFullscreen ? 40 : undefined}
-            left={isFullscreen ? 0 : undefined}
-            width={isFullscreen ? "100vw" : "100%"}
-            height={isFullscreen ? "100vh" : "auto"}
-            zIndex={isFullscreen ? 9999 : 1}
-            bgcolor="background.paper"
-        >
+        <>
+            <GlobalStyles
+                styles={{
+                    'body.monthly-schedule-fullscreen .MuiAppBar-root': {
+                        display: 'none !important',
+                    },
+                }}
+            />
+            <Box
+                sx={{
+                    mt: isFullscreen ? 0 : 2,
+                    position: isFullscreen ? 'fixed' : 'relative',
+                    inset: isFullscreen ? 0 : 'auto',
+                    zIndex: isFullscreen ? 1400 : 'auto',
+                    bgcolor: isFullscreen ? 'background.paper' : 'transparent',
+                    p: isFullscreen ? 2 : 0,
+                }}
+            >
             {isLoading && (
                 <Box 
                     position="absolute" 
@@ -1556,8 +1596,8 @@ export const UniverScheduleGrid = () => {
                 </Box>
             )}
             <Box 
-                mt={isFullscreen ? 0 : 2} 
-                height={isFullscreen ? "100%" : "calc(100vh - 100px)"} 
+                mt={0}
+                height={isFullscreen ? "calc(100vh - 140px)" : "calc(100vh - 100px)"} 
                 width="100%" 
                 display="flex" 
                 flexDirection="column"
@@ -1716,7 +1756,7 @@ export const UniverScheduleGrid = () => {
 
                 <Box flex={1} />
                 
-                <IconButton onClick={toggleFullscreen} color="primary" title={isFullscreen ? "Изход от цял екран" : "Цял екран"}>
+                <IconButton onClick={() => { void toggleFullscreen(); }} color="primary" title={isFullscreen ? "Изход от цял екран" : "Цял екран"}>
                     {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
                 </IconButton>
 
@@ -1768,6 +1808,7 @@ export const UniverScheduleGrid = () => {
             </Dialog>
 
             </Box>
-        </Box>
+            </Box>
+        </>
     );
 };
