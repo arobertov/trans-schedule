@@ -23,7 +23,7 @@ const validatePhone = [
 ];
 
 export const EmployeesCreate = () => (
-  <Create>
+  <Create redirect="show">
     <SimpleForm defaultValues={{ status: 'активен' }}>
       <Grid container spacing={2}>
         <Grid item xs={12} md={4}>

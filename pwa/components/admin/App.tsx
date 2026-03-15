@@ -243,6 +243,14 @@ const normalizeShiftScheduleDetailsPayload = (data: any) => {
   normalized.worked_time = normalizeTimeToLocalHHmm(normalized.worked_time);
   normalized.night_work = normalizeTimeToLocalHHmm(normalized.night_work);
 
+  // kilometers is required float in the API entity, so never send null/empty.
+  const normalizedKilometers = normalizeToFloat(normalized.kilometers);
+  if (typeof normalizedKilometers === "number" && Number.isFinite(normalizedKilometers)) {
+    normalized.kilometers = normalizedKilometers;
+  } else {
+    normalized.kilometers = 0;
+  }
+
   if (Array.isArray(normalized.routes)) {
     normalized.routes = normalized.routes.map((route: any) => {
       if (!route || typeof route !== "object") {
