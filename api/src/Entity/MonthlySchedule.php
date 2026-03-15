@@ -2,6 +2,9 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\Get;
@@ -22,12 +25,26 @@ use Symfony\Component\Serializer\Annotation\Groups;
     denormalizationContext: ['groups' => ['schedule:write']],
     paginationItemsPerPage: 20,
     operations: [
-        new GetCollection(),
+        new GetCollection(normalizationContext: ['groups' => ['schedule:list']]),
         new Post(),
         new Get(),
         new Put(),
         new Delete(),
     ]
+)]
+#[ApiFilter(
+    SearchFilter::class,
+    properties: [
+        'year' => 'exact',
+        'month' => 'exact',
+        'position' => 'exact',
+        'status' => 'exact',
+    ]
+)]
+#[ApiFilter(
+    OrderFilter::class,
+    properties: ['id', 'year', 'month', 'created_at', 'updated_at'],
+    arguments: ['orderParameterName' => 'order']
 )]
 #[ORM\Entity(repositoryClass: MonthlyScheduleRepository::class)]
 #[ORM\Table(name: 'monthly_schedules')]
@@ -37,35 +54,47 @@ class MonthlySchedule
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
-    #[Groups(['schedule:read'])]
+    #[Groups(['schedule:list', 'schedule:read'])]
     private ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Positions::class)]
     #[ORM\JoinColumn(nullable: false)]
     #[Assert\NotNull(message: 'Длъжността е задължителна')]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:list', 'schedule:read', 'schedule:write'])]
     private ?Positions $position = null;
+
+    #[ORM\ManyToOne(targetEntity: ShiftSchedules::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    #[Groups(['schedule:read', 'schedule:write'])]
+    #[ApiProperty(readableLink: false, writableLink: false, description: 'График на смените за делнични дни')]
+    private ?ShiftSchedules $weekday_shift_schedule = null;
+
+    #[ORM\ManyToOne(targetEntity: ShiftSchedules::class)]
+    #[ORM\JoinColumn(nullable: true)]
+    #[Groups(['schedule:read', 'schedule:write'])]
+    #[ApiProperty(readableLink: false, writableLink: false, description: 'График на смените за празнични дни')]
+    private ?ShiftSchedules $holiday_shift_schedule = null;
 
     #[ORM\Column]
     #[Assert\Range(min: 2020, max: 2100, notInRangeMessage: 'Годината трябва да е между 2020 и 2100')]
     #[Assert\NotNull(message: 'Годината е задължителна')]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:list', 'schedule:read', 'schedule:write'])]
     private ?int $year = null;
 
     #[ORM\Column]
     #[Assert\Range(min: 1, max: 12, notInRangeMessage: 'Месецът трябва да е между 1 и 12')]
     #[Assert\NotNull(message: 'Месецът е задължителен')]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:list', 'schedule:read', 'schedule:write'])]
     private ?int $month = null;
 
     #[ORM\Column(nullable: true)]
     #[Assert\PositiveOrZero(message: 'Работните дни трябва да са положително число')]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:list', 'schedule:read', 'schedule:write'])]
     private ?int $working_days = null;
 
     #[ORM\Column(nullable: true)]
     #[Assert\PositiveOrZero(message: 'Работните часове трябва да са положително число')]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:list', 'schedule:read', 'schedule:write'])]
     private ?int $working_hours = null;
     
     #[ORM\Column(length: 255, nullable: true)]
@@ -73,8 +102,13 @@ class MonthlySchedule
     private ?string $description = null;
 
     #[ORM\Column(type: 'string', enumType: ScheduleStatus::class, options: ['default' => 'чернова'])]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:list', 'schedule:read', 'schedule:write'])]
     private ?ScheduleStatus $status = ScheduleStatus::Draft;
+
+    #[ORM\Column(options: ['default' => false])]
+    #[Groups(['schedule:read', 'schedule:write'])]
+    #[ApiProperty(description: 'Дали да се използва остатъкът от предходния месец')]
+    private bool $link_previous_month_balance = false;
 
     #[ORM\Column(type: 'json', nullable: true)]
     #[Groups(['schedule:read', 'schedule:write'])]
@@ -82,11 +116,11 @@ class MonthlySchedule
     private ?array $schedule_rows = null;
 
     #[ORM\Column(type: 'datetime_immutable')]
-    #[Groups(['schedule:read'])]
+    #[Groups(['schedule:list', 'schedule:read'])]
     private ?\DateTimeImmutable $created_at = null;
 
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
-    #[Groups(['schedule:read'])]
+    #[Groups(['schedule:list', 'schedule:read'])]
     private ?\DateTimeImmutable $updated_at = null;
 
     public function __construct()
@@ -126,6 +160,30 @@ class MonthlySchedule
     public function setYear(int $year): static
     {
         $this->year = $year;
+
+        return $this;
+    }
+
+    public function getWeekdayShiftSchedule(): ?ShiftSchedules
+    {
+        return $this->weekday_shift_schedule;
+    }
+
+    public function setWeekdayShiftSchedule(?ShiftSchedules $weekday_shift_schedule): static
+    {
+        $this->weekday_shift_schedule = $weekday_shift_schedule;
+
+        return $this;
+    }
+
+    public function getHolidayShiftSchedule(): ?ShiftSchedules
+    {
+        return $this->holiday_shift_schedule;
+    }
+
+    public function setHolidayShiftSchedule(?ShiftSchedules $holiday_shift_schedule): static
+    {
+        $this->holiday_shift_schedule = $holiday_shift_schedule;
 
         return $this;
     }
@@ -186,6 +244,23 @@ class MonthlySchedule
     public function setStatus(ScheduleStatus $status): static
     {
         $this->status = $status;
+
+        return $this;
+    }
+
+    public function isLinkPreviousMonthBalance(): bool
+    {
+        return $this->link_previous_month_balance;
+    }
+
+    public function getLinkPreviousMonthBalance(): bool
+    {
+        return $this->link_previous_month_balance;
+    }
+
+    public function setLinkPreviousMonthBalance(bool $link_previous_month_balance): static
+    {
+        $this->link_previous_month_balance = $link_previous_month_balance;
 
         return $this;
     }

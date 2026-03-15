@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useDataProvider, useNotify, useRecordContext, useUpdate } from 'react-admin';
-import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, List, ListItem, ListItemText, ListItemSecondaryAction, GlobalStyles } from '@mui/material';
+import { useDataProvider, useNotify, useRecordContext } from 'react-admin';
+import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, List, ListItem, ListItemText, ListItemSecondaryAction, GlobalStyles, FormControlLabel, Switch } from '@mui/material';
 import { Fullscreen, FullscreenExit, Delete as DeleteIcon, PersonAdd } from '@mui/icons-material';
 import "@univerjs/design/lib/index.css";
 import "@univerjs/ui/lib/index.css";
@@ -30,6 +30,7 @@ const SCHEDULE_TEMPLATE = {
         bg: { rgb: '#f0f0f0' },
         ht: 2, 
         vt: 2, 
+        tb: 3,
         ff: 'Sofia Sans',
         bd: { 
             t: { style: 1, color: { rgb: '#ccc' } }, 
@@ -38,6 +39,21 @@ const SCHEDULE_TEMPLATE = {
             r: { style: 1, color: { rgb: '#ccc' } } 
         },
         fw: 1, 
+    },
+    summaryHeader: {
+        bg: { rgb: '#f0f0f0' },
+        ht: 2,
+        vt: 2,
+        tb: 3,
+        fs: 10,
+        ff: 'Sofia Sans',
+        fw: 1,
+        bd: {
+            t: { style: 1, color: { rgb: '#ccc' } },
+            b: { style: 1, color: { rgb: '#ccc' } },
+            l: { style: 1, color: { rgb: '#ccc' } },
+            r: { style: 1, color: { rgb: '#ccc' } }
+        }
     },
     employeeName: {
         vt: 2,
@@ -167,10 +183,191 @@ const GRID_ROW_OFFSET = 5; // Rows reserved for header info (0-4)
 const PJM_POSITION_NAME = 'машинист пжм';
 const MATRIX_COLORS_STORAGE_KEY = 'monthlySchedule.matrixValidationColors';
 const AUTO_SAVE_DEBOUNCE_MS = 900;
+const PREVIOUS_MONTH_CACHE_TTL_MS = 60 * 1000;
 const MATRIX_COLOR_DEFAULTS = {
     single: '#E8F5E9',
     duplicate: '#FFEBEE',
     weekend: '#A7A7A7',
+};
+
+const SUMMARY_HEADERS = [
+    'ИНДИВИДУАЛНА НОРМА',
+    '+/- ТЕКУЩ МЕСЕЦ',
+    '+/- МИНАЛ МЕСЕЦ',
+    'ОТРАБОТЕНО ВРЕМЕ',
+    'ОБЩО ЗА ПЕРИОДА',
+];
+
+const SUMMARY_HEADER_DISPLAY: Record<string, string> = {
+    'ИНДИВИДУАЛНА НОРМА': 'ИНДИВИДУАЛНА\n НОРМА',
+    '+/- ТЕКУЩ МЕСЕЦ': '+/- ТЕКУЩ\n МЕСЕЦ',
+    '+/- МИНАЛ МЕСЕЦ': '+/- МИНАЛ\n МЕСЕЦ',
+    'ОТРАБОТЕНО ВРЕМЕ': 'ОТРАБОТЕНО\n ВРЕМЕ',
+    'ОБЩО ЗА ПЕРИОДА': 'ОБЩО ЗА\n ПЕРИОДА',
+};
+
+const EXEMPTION_CODES = new Set(['О', 'Б', 'М', 'С', 'А', 'У', 'O', 'B', 'M', 'C', 'A', 'U']);
+
+const parseTimeToMinutes = (value: any): number | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    const match = raw.match(/^([+-]?)(\d+):(\d{2})(?::(\d{2}))?$/);
+    if (!match) {
+        const parsed = new Date(raw);
+        if (!Number.isNaN(parsed.getTime())) {
+            return parsed.getHours() * 60 + parsed.getMinutes();
+        }
+        return null;
+    }
+
+    const sign = match[1] === '-' ? -1 : 1;
+    const hours = Number(match[2]);
+    const minutes = Number(match[3]);
+    const seconds = match[4] ? Number(match[4]) : 0;
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes) || !Number.isInteger(seconds) || minutes > 59 || seconds > 59) return null;
+
+    return sign * (hours * 60 + minutes + (seconds >= 30 ? 1 : 0));
+};
+
+const formatMinutesToHHMM = (minutes: number): string => {
+    if (!Number.isFinite(minutes)) return '00:00';
+
+    const sign = minutes < 0 ? '-' : '';
+    const abs = Math.abs(Math.trunc(minutes));
+    const hh = Math.floor(abs / 60);
+    const mm = abs % 60;
+    return `${sign}${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
+
+const normalizeShiftCode = (value: any) => String(value ?? '').trim().toUpperCase();
+
+const getShiftCodeColumnWidth = (rows: any[], daysInMonth: number) => {
+    let maxLength = 1;
+
+    (rows || []).forEach((row: any) => {
+        for (let d = 1; d <= daysInMonth; d++) {
+            const code = String(row?.[`day_${d}`] ?? '').trim();
+            if (code.length > maxLength) {
+                maxLength = code.length;
+            }
+        }
+    });
+
+    // Keep at most ~1px horizontal free space on each side of the longest code.
+    const estimated = Math.ceil(maxLength * 8) + 2;
+    return Math.max(18, Math.min(estimated, 120));
+};
+
+const getSummaryColumnWidths = (rows: any[]) => {
+    const summaryFieldKeys = [
+        'individual_norm',
+        'current_month_balance',
+        'previous_month_balance',
+        'worked_total',
+        'period_total',
+    ];
+
+    return summaryFieldKeys.map((fieldKey, index) => {
+        const header = SUMMARY_HEADER_DISPLAY[SUMMARY_HEADERS[index]] || SUMMARY_HEADERS[index];
+        let maxLength = header
+            .split('\n')
+            .reduce((max, part) => Math.max(max, String(part).trim().length), 0);
+
+        (rows || []).forEach((row: any) => {
+            const valueLength = String(row?.[fieldKey] ?? '').trim().length;
+            if (valueLength > maxLength) maxLength = valueLength;
+        });
+
+        const estimated = Math.ceil(maxLength * 8) + 10;
+        return Math.max(68, Math.min(estimated, 120));
+    });
+};
+
+const getScheduleRefValue = (value: any): string => {
+    if (!value) return '';
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return '';
+        return trimmed.startsWith('/shift_schedules/') ? trimmed : `/shift_schedules/${trimmed}`;
+    }
+    if (typeof value === 'number') return `/shift_schedules/${value}`;
+    if (typeof value === 'object') {
+        if (value['@id']) return String(value['@id']);
+        if (value.id) return `/shift_schedules/${value.id}`;
+    }
+    return '';
+};
+
+const stableStringify = (input: any): string => {
+    const normalize = (value: any): any => {
+        if (Array.isArray(value)) return value.map(normalize);
+        if (value && typeof value === 'object') {
+            const keys = Object.keys(value).sort();
+            const out: Record<string, any> = {};
+            keys.forEach((k) => {
+                out[k] = normalize(value[k]);
+            });
+            return out;
+        }
+        return value;
+    };
+
+    try {
+        return JSON.stringify(normalize(input));
+    } catch {
+        return '';
+    }
+};
+
+const buildScheduleVersionSignature = (value: any): string => {
+    if (!value || typeof value !== 'object') return '';
+
+    const status = String(value?.status ?? '');
+    const linkPreviousMonthBalance = value?.link_previous_month_balance ? '1' : '0';
+    const weekdayShiftSchedule = getScheduleRefValue(value?.weekday_shift_schedule);
+    const holidayShiftSchedule = getScheduleRefValue(value?.holiday_shift_schedule);
+    const workingDays = String(value?.working_days ?? '');
+    const workingHours = String(value?.working_hours ?? '');
+    const rowsJson = stableStringify(Array.isArray(value?.schedule_rows) ? value.schedule_rows : []);
+
+    return [
+        status,
+        linkPreviousMonthBalance,
+        weekdayShiftSchedule,
+        holidayShiftSchedule,
+        workingDays,
+        workingHours,
+        rowsJson,
+    ].join('|');
+};
+
+const getSheetLayout = (isMatrixMode: boolean, daysInMonth: number) => {
+    const firstDayCol = isMatrixMode ? 8 : 3;
+    const lastDayCol = firstDayCol + daysInMonth - 1;
+    const duplicateNoCol = lastDayCol + 1;
+    const spacerAfterNoCol = duplicateNoCol + 1;
+    const summaryStartCol = spacerAfterNoCol + 1;
+    const summaryEndCol = summaryStartCol + SUMMARY_HEADERS.length - 1;
+    const spacerAfterSummary = summaryEndCol + 1;
+    const workedHoursStartCol = spacerAfterSummary + 1;
+    const workedHoursEndCol = workedHoursStartCol + daysInMonth - 1;
+
+    return {
+        firstDayCol,
+        lastDayCol,
+        duplicateNoCol,
+        spacerAfterNoCol,
+        summaryStartCol,
+        summaryEndCol,
+        spacerAfterSummary,
+        workedHoursStartCol,
+        workedHoursEndCol,
+        totalColumns: workedHoursEndCol + 1,
+    };
 };
 
 
@@ -192,13 +389,25 @@ export const UniverScheduleGrid = () => {
     const [patterns, setPatterns] = useState<any[]>([]);
     const [matrixData, setMatrixData] = useState<any[]>([]);
     const [selectedMatrixId, setSelectedMatrixId] = useState<string>('');
-    const [update] = useUpdate();
     const [loadedEmployees, setLoadedEmployees] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
     const [calendarStats, setCalendarStats] = useState<{ workDays: number, workHours: number } | null>(null);
+    const [calendarNonWorkingDays, setCalendarNonWorkingDays] = useState<Set<number>>(new Set());
     const [showMatrixConfig, setShowMatrixConfig] = useState(true);
+    const [shiftScheduleOptions, setShiftScheduleOptions] = useState<any[]>([]);
+    const [weekdayShiftSchedule, setWeekdayShiftSchedule] = useState('');
+    const [holidayShiftSchedule, setHolidayShiftSchedule] = useState('');
+    const [isWeekdayShiftMapLoading, setIsWeekdayShiftMapLoading] = useState(false);
+    const [isHolidayShiftMapLoading, setIsHolidayShiftMapLoading] = useState(false);
+    const [weekdayShiftMinutesMap, setWeekdayShiftMinutesMap] = useState<Record<string, number>>({});
+    const [holidayShiftMinutesMap, setHolidayShiftMinutesMap] = useState<Record<string, number>>({});
+    const [linkPreviousMonthBalance, setLinkPreviousMonthBalance] = useState(false);
+    const [previousMonthBalanceByEmployee, setPreviousMonthBalanceByEmployee] = useState<Record<string, number>>({});
+    const [previousMonthStatus, setPreviousMonthStatus] = useState<'off' | 'loading' | 'found' | 'missing' | 'error'>('off');
+    const [previousMonthLabel, setPreviousMonthLabel] = useState('');
+    const [isRecalculating, setIsRecalculating] = useState(false);
     const [matrixValidationColors, setMatrixValidationColors] = useState(() => {
         if (typeof window === 'undefined') return MATRIX_COLOR_DEFAULTS;
         try {
@@ -232,12 +441,32 @@ export const UniverScheduleGrid = () => {
     const showMatrixConfigRef = useRef(showMatrixConfig);
     const loadedEmployeesRef = useRef(loadedEmployees);
     const matrixValidationColorsRef = useRef(matrixValidationColors);
+    const weekdayShiftScheduleRef = useRef(weekdayShiftSchedule);
+    const holidayShiftScheduleRef = useRef(holidayShiftSchedule);
+    const weekdayShiftMinutesMapRef = useRef<Record<string, number>>(weekdayShiftMinutesMap);
+    const holidayShiftMinutesMapRef = useRef<Record<string, number>>(holidayShiftMinutesMap);
+    const linkPreviousMonthBalanceRef = useRef(linkPreviousMonthBalance);
+    const previousMonthBalanceByEmployeeRef = useRef<Record<string, number>>(previousMonthBalanceByEmployee);
+    const calendarNonWorkingDaysRef = useRef<Set<number>>(calendarNonWorkingDays);
     const colorApplyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const canUseSetRangeCommandRef = useRef<boolean | null>(null);
     const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const autoSaveIdleCallbackRef = useRef<number | null>(null);
     const autoSaveStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isSavingRef = useRef(false);
     const hasPendingAutoSaveRef = useRef(false);
+    const recalculationCounterRef = useRef(0);
+    const scheduleRowsCacheRef = useRef<any[] | null>(null);
+    const dirtyEmployeeRowIndexesRef = useRef<Set<number>>(new Set());
+    const previousMonthLookupCacheRef = useRef<Record<string, {
+        expiresAt: number;
+        status: 'found' | 'missing';
+        label: string;
+        balanceByEmployee: Record<string, number>;
+    }>>({});
+    const lastKnownScheduleVersionRef = useRef('');
+    const lastLocalSaveAtRef = useRef(0);
+    const isApplyingRemoteSyncRef = useRef(false);
 
     useEffect(() => { periodsRef.current = periods; }, [periods]);
     useEffect(() => { matrixDataRef.current = matrixData; }, [matrixData]);
@@ -245,12 +474,524 @@ export const UniverScheduleGrid = () => {
     useEffect(() => { showMatrixConfigRef.current = showMatrixConfig; }, [showMatrixConfig]);
     useEffect(() => { loadedEmployeesRef.current = loadedEmployees; }, [loadedEmployees]);
     useEffect(() => { matrixValidationColorsRef.current = matrixValidationColors; }, [matrixValidationColors]);
+    useEffect(() => { weekdayShiftScheduleRef.current = weekdayShiftSchedule; }, [weekdayShiftSchedule]);
+    useEffect(() => { holidayShiftScheduleRef.current = holidayShiftSchedule; }, [holidayShiftSchedule]);
+    useEffect(() => { weekdayShiftMinutesMapRef.current = weekdayShiftMinutesMap; }, [weekdayShiftMinutesMap]);
+    useEffect(() => { holidayShiftMinutesMapRef.current = holidayShiftMinutesMap; }, [holidayShiftMinutesMap]);
+    useEffect(() => { linkPreviousMonthBalanceRef.current = linkPreviousMonthBalance; }, [linkPreviousMonthBalance]);
+    useEffect(() => { previousMonthBalanceByEmployeeRef.current = previousMonthBalanceByEmployee; }, [previousMonthBalanceByEmployee]);
+    useEffect(() => { calendarNonWorkingDaysRef.current = calendarNonWorkingDays; }, [calendarNonWorkingDays]);
     useEffect(() => {
         if (typeof window === 'undefined') return;
         try {
             window.localStorage.setItem(MATRIX_COLORS_STORAGE_KEY, JSON.stringify(matrixValidationColors));
         } catch {}
     }, [matrixValidationColors]);
+
+    useEffect(() => {
+        const weekdayValue = getScheduleRefValue((record as any)?.weekday_shift_schedule);
+        const holidayValue = getScheduleRefValue((record as any)?.holiday_shift_schedule);
+
+        setWeekdayShiftSchedule(weekdayValue);
+        setHolidayShiftSchedule(holidayValue);
+        setLinkPreviousMonthBalance(Boolean((record as any)?.link_previous_month_balance));
+    }, [
+        record?.id,
+        (record as any)?.weekday_shift_schedule,
+        (record as any)?.holiday_shift_schedule,
+        (record as any)?.link_previous_month_balance,
+    ]);
+
+    useEffect(() => {
+        tempRowsRef.current = null;
+        scheduleRowsCacheRef.current = null;
+        dirtyEmployeeRowIndexesRef.current.clear();
+    }, [record?.id]);
+
+    useEffect(() => {
+        lastKnownScheduleVersionRef.current = buildScheduleVersionSignature(record);
+    }, [record?.id, (record as any)?.updated_at, record?.status]);
+
+    useEffect(() => {
+        if (!record?.id || typeof window === 'undefined') return;
+
+        let isMounted = true;
+
+        const cloneValue = <T,>(value: T): T => {
+            try {
+                if (typeof structuredClone === 'function') {
+                    return structuredClone(value);
+                }
+            } catch {}
+
+            try {
+                return JSON.parse(JSON.stringify(value));
+            } catch {
+                return value;
+            }
+        };
+
+        const applyRemoteState = async (latest: any) => {
+            const latestRows = cloneValue(Array.isArray(latest?.schedule_rows) ? latest.schedule_rows : []);
+
+            tempRowsRef.current = latestRows;
+            scheduleRowsCacheRef.current = latestRows;
+            dirtyEmployeeRowIndexesRef.current.clear();
+
+            setWeekdayShiftSchedule(getScheduleRefValue((latest as any)?.weekday_shift_schedule));
+            setHolidayShiftSchedule(getScheduleRefValue((latest as any)?.holiday_shift_schedule));
+            setLinkPreviousMonthBalance(Boolean((latest as any)?.link_previous_month_balance));
+
+            const tryPatchOpenWorkbook = async (): Promise<boolean> => {
+                if (!univerRef.current || !workbookRef.current) return false;
+
+                const sheet = workbookRef.current?.getActiveSheet?.();
+                if (!sheet) return false;
+
+                const employees = loadedEmployeesRef.current || [];
+                if (employees.length === 0) return false;
+
+                const toEmployeeKey = (value: any): string => {
+                    if (value === null || value === undefined) return '';
+
+                    const raw = String(value).trim();
+                    if (!raw) return '';
+
+                    const iriMatch = raw.match(/\/(\d+)$/);
+                    if (iriMatch?.[1]) return iriMatch[1];
+
+                    const num = Number(raw);
+                    if (Number.isFinite(num)) return String(Math.trunc(num));
+
+                    return raw;
+                };
+
+                const latestByEmployeeKey = new Map<string, any>();
+                latestRows.forEach((row: any) => {
+                    const employeeKey = toEmployeeKey(row?.employee_id);
+                    if (employeeKey) {
+                        latestByEmployeeKey.set(employeeKey, row);
+                    }
+                });
+
+                const canMatchByEmployeeKey = latestByEmployeeKey.size === employees.length
+                    && employees.every((emp: any) => latestByEmployeeKey.has(toEmployeeKey(emp?.id)));
+
+                const canMatchByIndex = latestRows.length === employees.length;
+
+                // If neither key-based nor index-based matching is possible, this is likely a true structural change.
+                if (!canMatchByEmployeeKey && !canMatchByIndex) return false;
+
+                const year = Number(record?.year);
+                const month = Number(record?.month);
+                if (!Number.isFinite(year) || !Number.isFinite(month)) return false;
+
+                const isMatrixMode = showMatrixConfigRef.current;
+                const daysInMonth = new Date(year, month, 0).getDate();
+                const layout = getSheetLayout(isMatrixMode, daysInMonth);
+                const unitId = workbookRef.current.getUnitId();
+                const sheetId = sheet.getSheetId();
+                const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
+
+                const normalizeCellValue = (value: any) => String(value ?? '');
+                const resolveCurrentStyle = (styleRef: any) => {
+                    if (typeof styleRef !== 'string') return styleRef;
+                    if (!workbookRef.current) return styleRef;
+
+                    try {
+                        const styles = workbookRef.current.getStyles();
+                        return styles ? styles.get(styleRef) : styleRef;
+                    } catch {
+                        return styleRef;
+                    }
+                };
+
+                const shouldPatchCell = (row: number, column: number, nextValue: any, nextStyle?: any) => {
+                    const currentCell = sheet.getCell(row, column) || {};
+                    const currentValue = normalizeCellValue(currentCell?.v);
+                    const desiredValue = normalizeCellValue(nextValue);
+
+                    const valueChanged = currentValue !== desiredValue;
+                    if (nextStyle === undefined) {
+                        return valueChanged;
+                    }
+
+                    const currentStyle = resolveCurrentStyle(currentCell?.s);
+                    const styleChanged = stableStringify(currentStyle) !== stableStringify(nextStyle);
+                    return valueChanged || styleChanged;
+                };
+
+                const patchCellIfNeeded = async (row: number, column: number, nextValue: any, nextStyle?: any) => {
+                    if (!shouldPatchCell(row, column, nextValue, nextStyle)) {
+                        return false;
+                    }
+
+                    await setCellValueSafely(commandService, unitId, sheetId, sheet, row, column, nextValue, nextStyle);
+                    return true;
+                };
+
+                for (let i = 0; i < employees.length; i++) {
+                    const employeeKey = toEmployeeKey(employees[i]?.id);
+                    const rowData = canMatchByEmployeeKey
+                        ? (latestByEmployeeKey.get(employeeKey) || {})
+                        : (latestRows[i] || {});
+                    const rowIndex = i + GRID_ROW_OFFSET;
+
+                    if (isMatrixMode) {
+                        await patchCellIfNeeded(rowIndex, 0, rowData.matrix_global || '');
+                        await patchCellIfNeeded(rowIndex, 1, rowData.matrix_p1 || '');
+                        await patchCellIfNeeded(rowIndex, 2, rowData.matrix_p2 || '');
+                        await patchCellIfNeeded(rowIndex, 3, rowData.matrix_p3 || '');
+                    }
+
+                    for (let d = 1; d <= daysInMonth; d++) {
+                        const dayCol = layout.firstDayCol - 1 + d;
+                        const dayValue = rowData[`day_${d}`] || '';
+                        const dayStyle = rowData[`day_${d}_s`];
+                        await patchCellIfNeeded(rowIndex, dayCol, dayValue, dayStyle);
+                    }
+
+                    for (let sIdx = 0; sIdx < SUMMARY_HEADERS.length; sIdx++) {
+                        const summaryValue = sIdx === 0
+                            ? rowData.individual_norm
+                            : sIdx === 1
+                                ? rowData.current_month_balance
+                                : sIdx === 2
+                                    ? rowData.previous_month_balance
+                                    : sIdx === 3
+                                        ? rowData.worked_total
+                                        : rowData.period_total;
+
+                        await patchCellIfNeeded(rowIndex, layout.summaryStartCol + sIdx, summaryValue || '');
+                    }
+
+                    for (let d = 1; d <= daysInMonth; d++) {
+                        const workedCol = layout.workedHoursStartCol - 1 + d;
+                        await patchCellIfNeeded(rowIndex, workedCol, rowData[`day_work_${d}`] || '');
+                    }
+                }
+
+                return true;
+            };
+
+            if (await tryPatchOpenWorkbook()) {
+                return;
+            }
+
+            if (univerRef.current) {
+                univerRef.current.dispose();
+                univerRef.current = null;
+                workbookRef.current = null;
+            }
+
+            setRenderTrigger((prev: number) => prev + 1);
+        };
+
+        const syncFromLatest = async (payloadData?: any) => {
+            if (!isMounted) return;
+            if (isSavingRef.current || isApplyingRemoteSyncRef.current) return;
+
+            try {
+                let latest = payloadData;
+
+                // Mercure payload often omits heavy fields; fetch full record when needed.
+                if (!latest || typeof latest !== 'object' || !Array.isArray(latest?.schedule_rows)) {
+                    const response = await dataProvider.getOne('monthly_schedules', { id: record.id });
+                    latest = response?.data;
+                }
+
+                if (!isMounted || !latest) return;
+
+                const nextSignature = buildScheduleVersionSignature(latest);
+                if (!nextSignature) return;
+
+                if (!lastKnownScheduleVersionRef.current) {
+                    lastKnownScheduleVersionRef.current = nextSignature;
+                    return;
+                }
+
+                if (nextSignature === lastKnownScheduleVersionRef.current) {
+                    return;
+                }
+
+                const updatedByLocalSave = Date.now() - lastLocalSaveAtRef.current < 2500;
+                if (updatedByLocalSave) {
+                    lastKnownScheduleVersionRef.current = nextSignature;
+                    return;
+                }
+
+                isApplyingRemoteSyncRef.current = true;
+                try {
+                    lastKnownScheduleVersionRef.current = nextSignature;
+                    await applyRemoteState(latest);
+                } finally {
+                    isApplyingRemoteSyncRef.current = false;
+                }
+
+                notify('Открити са промени от друг прозорец. Графикът е обновен.', { type: 'info' });
+            } catch (error) {
+                console.warn('Mercure monthly schedule sync failed', error);
+            }
+        };
+
+        const hubUrl = new URL('/.well-known/mercure', window.location.origin);
+        const recordIri = typeof (record as any)?.['@id'] === 'string'
+            ? String((record as any)['@id'])
+            : `/monthly_schedules/${record.id}`;
+        const absoluteRecordIri = recordIri.startsWith('http')
+            ? recordIri
+            : `${window.location.origin}${recordIri}`;
+
+        // Subscribe to both absolute and relative forms to support hub/topic normalization differences.
+        hubUrl.searchParams.append('topic', absoluteRecordIri);
+        hubUrl.searchParams.append('topic', recordIri);
+
+        const eventSource = new EventSource(hubUrl.toString(), { withCredentials: true });
+
+        eventSource.onmessage = (event: MessageEvent<string>) => {
+            let payload: any = null;
+            if (event?.data) {
+                try {
+                    payload = JSON.parse(event.data);
+                } catch {
+                    payload = null;
+                }
+            }
+
+            void syncFromLatest(payload);
+        };
+
+        eventSource.onerror = () => {
+            // Keep silent and let EventSource auto-reconnect.
+        };
+
+        return () => {
+            isMounted = false;
+            eventSource.close();
+        };
+    }, [dataProvider, notify, record?.id, (record as any)?.['@id']]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        dataProvider.getList('shift_schedules', {
+            pagination: { page: 1, perPage: 1000 },
+            sort: { field: 'name', order: 'ASC' }
+        })
+        .then(({ data }) => {
+            if (!isMounted) return;
+            setShiftScheduleOptions(data || []);
+        })
+        .catch((err) => console.error('Failed to fetch shift schedules', err));
+
+        return () => { isMounted = false; };
+    }, [dataProvider]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const scheduleRef = getScheduleRefValue(weekdayShiftSchedule);
+        if (!scheduleRef) {
+            setWeekdayShiftMinutesMap({});
+            setIsWeekdayShiftMapLoading(false);
+            return () => { isMounted = false; };
+        }
+
+        setIsWeekdayShiftMapLoading(true);
+
+        const fetchShiftDetails = async () => {
+            const primary = await dataProvider.getList('shift_schedule_details', {
+                filter: { shift_schedule: scheduleRef },
+                pagination: { page: 1, perPage: 1000 },
+                sort: { field: 'id', order: 'ASC' }
+            });
+
+            if (Array.isArray(primary?.data) && primary.data.length > 0) {
+                return primary.data;
+            }
+
+            const fallback = await dataProvider.getList('shifts', {
+                filter: { shift_schedule: scheduleRef },
+                pagination: { page: 1, perPage: 1000 },
+                sort: { field: 'id', order: 'ASC' }
+            });
+
+            return fallback?.data || [];
+        };
+
+        fetchShiftDetails()
+        .then((data) => {
+            if (!isMounted) return;
+            const nextMap: Record<string, number> = {};
+            (data || []).forEach((detail: any) => {
+                const key = normalizeShiftCode(detail?.shift_code);
+                const minutes = parseTimeToMinutes(detail?.worked_time);
+                if (key && minutes !== null) {
+                    nextMap[key] = minutes;
+                }
+            });
+            setWeekdayShiftMinutesMap(nextMap);
+        })
+        .catch((err) => {
+            console.error('Failed to fetch weekday shift details', err);
+            if (isMounted) setWeekdayShiftMinutesMap({});
+        })
+        .finally(() => {
+            if (isMounted) setIsWeekdayShiftMapLoading(false);
+        });
+
+        return () => { isMounted = false; };
+    }, [dataProvider, weekdayShiftSchedule]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const scheduleRef = getScheduleRefValue(holidayShiftSchedule);
+        if (!scheduleRef) {
+            setHolidayShiftMinutesMap({});
+            setIsHolidayShiftMapLoading(false);
+            return () => { isMounted = false; };
+        }
+
+        setIsHolidayShiftMapLoading(true);
+
+        const fetchShiftDetails = async () => {
+            const primary = await dataProvider.getList('shift_schedule_details', {
+                filter: { shift_schedule: scheduleRef },
+                pagination: { page: 1, perPage: 1000 },
+                sort: { field: 'id', order: 'ASC' }
+            });
+
+            if (Array.isArray(primary?.data) && primary.data.length > 0) {
+                return primary.data;
+            }
+
+            const fallback = await dataProvider.getList('shifts', {
+                filter: { shift_schedule: scheduleRef },
+                pagination: { page: 1, perPage: 1000 },
+                sort: { field: 'id', order: 'ASC' }
+            });
+
+            return fallback?.data || [];
+        };
+
+        fetchShiftDetails()
+        .then((data) => {
+            if (!isMounted) return;
+            const nextMap: Record<string, number> = {};
+            (data || []).forEach((detail: any) => {
+                const key = normalizeShiftCode(detail?.shift_code);
+                const minutes = parseTimeToMinutes(detail?.worked_time);
+                if (key && minutes !== null) {
+                    nextMap[key] = minutes;
+                }
+            });
+            setHolidayShiftMinutesMap(nextMap);
+        })
+        .catch((err) => {
+            console.error('Failed to fetch holiday shift details', err);
+            if (isMounted) setHolidayShiftMinutesMap({});
+        })
+        .finally(() => {
+            if (isMounted) setIsHolidayShiftMapLoading(false);
+        });
+
+        return () => { isMounted = false; };
+    }, [dataProvider, holidayShiftSchedule]);
+
+    useEffect(() => {
+        if (!record?.year || !record?.month || !record?.position || !linkPreviousMonthBalance) {
+            setPreviousMonthBalanceByEmployee({});
+            setPreviousMonthStatus('off');
+            setPreviousMonthLabel('');
+            return;
+        }
+
+        let isMounted = true;
+        const currentMonth = Number(record.month);
+        const currentYear = Number(record.year);
+        const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+        const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+        const positionRefRaw = typeof record.position === 'object' ? (record.position['@id'] || record.position.id) : record.position;
+        const positionRef = String(positionRefRaw ?? '').trim();
+        const label = `${String(prevMonth).padStart(2, '0')}.${prevYear}`;
+        const cacheKey = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${positionRef}`;
+        const cached = previousMonthLookupCacheRef.current[cacheKey];
+
+        if (cached && cached.expiresAt > Date.now()) {
+            setPreviousMonthLabel(cached.label || label);
+            setPreviousMonthBalanceByEmployee(cached.balanceByEmployee || {});
+            setPreviousMonthStatus(cached.status);
+            return;
+        }
+
+        setPreviousMonthStatus('loading');
+        setPreviousMonthLabel(label);
+
+        (async () => {
+            try {
+                const { data } = await dataProvider.getList('monthly_schedules', {
+                    filter: { year: prevYear, month: prevMonth, position: positionRef },
+                    pagination: { page: 1, perPage: 20 },
+                    sort: { field: 'id', order: 'DESC' }
+                });
+
+                if (!isMounted) return;
+
+                const prevScheduleLight = data?.[0];
+                if (!prevScheduleLight?.id) {
+                    previousMonthLookupCacheRef.current[cacheKey] = {
+                        expiresAt: Date.now() + PREVIOUS_MONTH_CACHE_TTL_MS,
+                        status: 'missing',
+                        label,
+                        balanceByEmployee: {},
+                    };
+                    setPreviousMonthBalanceByEmployee({});
+                    setPreviousMonthStatus('missing');
+                    return;
+                }
+
+                const { data: prevSchedule } = await dataProvider.getOne('monthly_schedules', { id: prevScheduleLight.id });
+                if (!isMounted) return;
+
+                const rows = prevSchedule?.schedule_rows || [];
+                const nextMap: Record<string, number> = {};
+
+                rows.forEach((row: any) => {
+                    const employeeId = String(row?.employee_id ?? '').trim();
+                    if (!employeeId) return;
+
+                    const fromMinutes = row?.period_total_minutes;
+                    if (typeof fromMinutes === 'number' && Number.isFinite(fromMinutes)) {
+                        nextMap[employeeId] = Math.trunc(fromMinutes);
+                        return;
+                    }
+
+                    const fromText = row?.period_total || row?.summary_period_total || '';
+                    const parsed = parseTimeToMinutes(fromText);
+                    if (parsed !== null) {
+                        nextMap[employeeId] = parsed;
+                    }
+                });
+
+                previousMonthLookupCacheRef.current[cacheKey] = {
+                    expiresAt: Date.now() + PREVIOUS_MONTH_CACHE_TTL_MS,
+                    status: 'found',
+                    label,
+                    balanceByEmployee: nextMap,
+                };
+
+                setPreviousMonthBalanceByEmployee(nextMap);
+                setPreviousMonthStatus('found');
+            } catch (err) {
+                console.error('Failed to fetch previous monthly schedule', err);
+                if (isMounted) {
+                    setPreviousMonthBalanceByEmployee({});
+                    setPreviousMonthStatus('error');
+                }
+            }
+        })();
+
+        return () => { isMounted = false; };
+    }, [dataProvider, linkPreviousMonthBalance, record?.year, record?.month, record?.position]);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -283,6 +1024,14 @@ export const UniverScheduleGrid = () => {
             if (autoSaveTimeoutRef.current) {
                 clearTimeout(autoSaveTimeoutRef.current);
                 autoSaveTimeoutRef.current = null;
+            }
+
+            if (autoSaveIdleCallbackRef.current !== null && typeof window !== 'undefined') {
+                const cancelIdle = (window as any).cancelIdleCallback;
+                if (typeof cancelIdle === 'function') {
+                    cancelIdle(autoSaveIdleCallbackRef.current);
+                }
+                autoSaveIdleCallbackRef.current = null;
             }
 
             if (autoSaveStatusTimeoutRef.current) {
@@ -321,6 +1070,106 @@ export const UniverScheduleGrid = () => {
         ...SCHEDULE_TEMPLATE.weekendCell,
         bg: { rgb: colorHex }
     });
+
+    const isNonWorkingDay = (year: number, month: number, day: number) => {
+        const fromCalendar = calendarNonWorkingDaysRef.current;
+        if (fromCalendar && fromCalendar.size > 0) {
+            return fromCalendar.has(day);
+        }
+
+        const date = new Date(year, month - 1, day);
+        return date.getDay() === 0 || date.getDay() === 6;
+    };
+
+    const runWithRecalculationIndicator = async <T,>(work: () => Promise<T>): Promise<T> => {
+        recalculationCounterRef.current += 1;
+        setIsRecalculating(true);
+
+        try {
+            return await work();
+        } finally {
+            recalculationCounterRef.current = Math.max(0, recalculationCounterRef.current - 1);
+            if (recalculationCounterRef.current === 0) {
+                setIsRecalculating(false);
+            }
+        }
+    };
+
+    const applyDerivedTables = async (
+        commandService: any,
+        unitId: string,
+        subUnitId: string,
+        sheet: any,
+        lastEmployeeRow: number,
+        layout: ReturnType<typeof getSheetLayout>,
+        year: number,
+        month: number,
+        rowStart: number = GRID_ROW_OFFSET,
+        rowEnd: number = lastEmployeeRow
+    ) => {
+        if ((weekdayShiftScheduleRef.current && isWeekdayShiftMapLoading) || (holidayShiftScheduleRef.current && isHolidayShiftMapLoading)) {
+            return;
+        }
+
+        const monthNormMinutes = Math.max(0, Math.round(Number(calendarStats?.workHours ?? record?.working_hours ?? 0) * 60));
+        const safeStart = Math.max(GRID_ROW_OFFSET, rowStart);
+        const safeEnd = Math.min(lastEmployeeRow, rowEnd);
+
+        if (safeStart > safeEnd) {
+            return;
+        }
+
+        for (let r = safeStart; r <= safeEnd; r++) {
+            const employeeIndex = r - GRID_ROW_OFFSET;
+            const employee = loadedEmployeesRef.current[employeeIndex];
+            const employeeId = String(employee?.id ?? '').trim();
+
+            let exemptCount = 0;
+            let workedMinutes = 0;
+
+            await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, layout.duplicateNoCol, employeeIndex + 1, SCHEDULE_TEMPLATE.matrixCell);
+
+            for (let d = 1; d <= (layout.lastDayCol - layout.firstDayCol + 1); d++) {
+                const mainCol = layout.firstDayCol + d - 1;
+                const workCol = layout.workedHoursStartCol + d - 1;
+                const rawCode = String(sheet.getCell(r, mainCol)?.v ?? '').trim();
+                const normalizedCode = normalizeShiftCode(rawCode);
+                const isHolidayLikeDay = isNonWorkingDay(year, month, d);
+
+                if (EXEMPTION_CODES.has(normalizedCode)) {
+                    exemptCount += 1;
+                }
+
+                const minutes = normalizedCode
+                    ? (isHolidayLikeDay
+                        ? (holidayShiftMinutesMapRef.current[normalizedCode] ?? 0)
+                        : (weekdayShiftMinutesMapRef.current[normalizedCode] ?? 0))
+                    : 0;
+
+                workedMinutes += minutes;
+
+                const workedValue = normalizedCode ? formatMinutesToHHMM(minutes) : '';
+                const workedStyle = isHolidayLikeDay
+                    ? getWeekendCellStyle(matrixValidationColorsRef.current.weekend)
+                    : SCHEDULE_TEMPLATE.normalCell;
+
+                await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, workCol, workedValue, workedStyle);
+            }
+
+            const individualNormMinutes = monthNormMinutes - exemptCount * 8 * 60;
+            const currentMonthBalanceMinutes = workedMinutes - individualNormMinutes;
+            const previousMonthBalanceMinutes = linkPreviousMonthBalanceRef.current
+                ? (previousMonthBalanceByEmployeeRef.current[employeeId] ?? 0)
+                : 0;
+            const periodTotalMinutes = currentMonthBalanceMinutes + previousMonthBalanceMinutes;
+
+            await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, layout.summaryStartCol + 0, formatMinutesToHHMM(individualNormMinutes), SCHEDULE_TEMPLATE.normalCell);
+            await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, layout.summaryStartCol + 1, formatMinutesToHHMM(currentMonthBalanceMinutes), SCHEDULE_TEMPLATE.normalCell);
+            await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, layout.summaryStartCol + 2, formatMinutesToHHMM(previousMonthBalanceMinutes), SCHEDULE_TEMPLATE.normalCell);
+            await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, layout.summaryStartCol + 3, formatMinutesToHHMM(workedMinutes), SCHEDULE_TEMPLATE.normalCell);
+            await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, layout.summaryStartCol + 4, formatMinutesToHHMM(periodTotalMinutes), SCHEDULE_TEMPLATE.normalCell);
+        }
+    };
 
     const getGlobalColumnConflictSummary = (sheet: any, lastEmployeeRow: number) => {
         const globalValues = new Set<string>();
@@ -467,7 +1316,11 @@ export const UniverScheduleGrid = () => {
                         : getValidationMatrixStyle(matrixValidationColorsRef.current.duplicate);
                 }
 
-                await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, col, currentValue, style);
+                // When the cell is empty we must explicitly reset bg to null.
+                // Without it Univer merges the new style with the existing one and
+                // the previous validation color (green/duplicate) persists.
+                const resolvedStyle = key ? style : { ...SCHEDULE_TEMPLATE.matrixInputCell, bg: null };
+                await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, col, currentValue, resolvedStyle);
             }
         }
     };
@@ -484,9 +1337,8 @@ export const UniverScheduleGrid = () => {
         month: number
     ) => {
         for (let d = 1; d <= daysInMonth; d++) {
-            const date = new Date(year, month - 1, d);
-            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-            if (!isWeekend) continue;
+            const isHolidayLikeDay = isNonWorkingDay(year, month, d);
+            if (!isHolidayLikeDay) continue;
 
             const c = firstDayCol + d - 1;
             for (let r = GRID_ROW_OFFSET; r <= lastEmployeeRow; r++) {
@@ -588,11 +1440,29 @@ export const UniverScheduleGrid = () => {
             if (data && data.length > 0 && data[0].monthsData) {
                 const monthInfo = data[0].monthsData[record.month];
                 if (monthInfo) {
+                    const nextNonWorkingDays = new Set<number>();
+                    const monthDays = Array.isArray(monthInfo.days) ? monthInfo.days : [];
+
+                    monthDays.forEach((dayInfo: any) => {
+                        const day = Number(dayInfo?.day);
+                        const type = String(dayInfo?.type ?? '').toLowerCase();
+                        if (!Number.isInteger(day) || day < 1) return;
+
+                        if (type === 'holiday' || type === 'weekend') {
+                            nextNonWorkingDays.add(day);
+                        }
+                    });
+
+                    setCalendarNonWorkingDays(nextNonWorkingDays);
                     setCalendarStats({
                         workDays: monthInfo.workDays || 0,
                         workHours: monthInfo.workHours || 0
                     });
+                } else {
+                    setCalendarNonWorkingDays(new Set());
                 }
+            } else {
+                setCalendarNonWorkingDays(new Set());
             }
         })
         .catch(err => console.error("Failed to fetch calendar", err));
@@ -638,7 +1508,8 @@ export const UniverScheduleGrid = () => {
 
     // Init Univer & Load Data
     useEffect(() => {
-        if (!containerRef.current || !record) return;
+        const hasHydratedScheduleRows = typeof (record as any)?.schedule_rows !== 'undefined';
+        if (!containerRef.current || !record?.id || !record?.year || !record?.month || !record?.position || !hasHydratedScheduleRows) return;
         setIsLoading(true);
         
         // Prevent double initialization
@@ -686,21 +1557,32 @@ export const UniverScheduleGrid = () => {
 
             if (!range || !params?.unitId || !params?.subUnitId) return;
             if (isApplyingPeriodStylesRef.current) return;
+            if (isApplyingRemoteSyncRef.current) return;
 
             const wb = univerInstanceService.getUnit(params.unitId);
             const sheet = wb?.getSheetBySheetId(params.subUnitId);
             if (!sheet) return;
 
-            scheduleAutoSave();
-
                 const isMatrixMode = showMatrixConfigRef.current;
-                if (!isMatrixMode) return;
+                const daysInMonth = new Date(record.year, record.month, 0).getDate();
+                const layout = getSheetLayout(isMatrixMode, daysInMonth);
                 const employeeRowsCount = loadedEmployeesRef.current.length;
                 const lastEmployeeRow = GRID_ROW_OFFSET + employeeRowsCount - 1;
                 if (employeeRowsCount <= 0) return;
 
+                const affectedStartRow = Math.max(range.startRow, GRID_ROW_OFFSET);
+                const affectedEndRow = Math.min(range.endRow, lastEmployeeRow);
+                const hasEmployeeRowOverlap = affectedStartRow <= affectedEndRow;
+
+                if (hasEmployeeRowOverlap) {
+                    for (let r = affectedStartRow; r <= affectedEndRow; r++) {
+                        dirtyEmployeeRowIndexesRef.current.add(r - GRID_ROW_OFFSET);
+                    }
+                    scheduleAutoSave();
+                }
+
                 // 2. React if update touches Global/P1/P2/P3 (Cols 0-3) - Update frequency colors per column
-                if (range.startColumn <= 3 && range.endColumn >= 0) {
+                if (isMatrixMode && range.startColumn <= 3 && range.endColumn >= 0) {
                     isApplyingPeriodStylesRef.current = true;
                     try {
                         await applyMatrixFrequencyStyles(commandService, params.unitId, params.subUnitId, sheet, lastEmployeeRow, [0, 1, 2, 3]);
@@ -710,7 +1592,7 @@ export const UniverScheduleGrid = () => {
                 }
 
                 // 3. Auto-fill schedule if update touches Matrix Inputs (Cols 0-3)
-                if (range.endColumn >= 0 && range.startColumn <= 3) {
+                if (isMatrixMode && range.endColumn >= 0 && range.startColumn <= 3) {
                     const currentMatrixData = matrixDataRef.current;
                     const currentMatrixId = selectedMatrixIdRef.current;
                     const currentPeriods = periodsRef.current;
@@ -718,8 +1600,8 @@ export const UniverScheduleGrid = () => {
 
                     const selectedMatrix = currentMatrixData.find(m => String(m.id) === currentMatrixId);
                     const matrixRows = selectedMatrix ? (selectedMatrix.rows || []) : null;
-                    const firstDayCol = 8;
-                    const days = sheet.getColumnCount() - firstDayCol;
+                    const firstDayCol = layout.firstDayCol;
+                    const days = daysInMonth;
 
                     // Helper to get letter from multiple sources or calculate
                     const getValForDay = (day: number, startPos: any, sheetRowIndex: number) => {
@@ -755,20 +1637,22 @@ export const UniverScheduleGrid = () => {
                         const p2Val = sheet.getCell(r, 2)?.v;
                         const p3Val = sheet.getCell(r, 3)?.v;
 
-                        if (globalVal || p1Val || p2Val || p3Val) {
-                            for(let d=1; d<=days; d++) {
-                                let startPosToUse = globalVal;
-                                if (d <= currentPeriods.p1End && p1Val) startPosToUse = p1Val;
-                                else if (d > currentPeriods.p1End && d <= currentPeriods.p2End && p2Val) startPosToUse = p2Val;
-                                else if (d > currentPeriods.p2End && p3Val) startPosToUse = p3Val;
+                        // Always iterate over all days — even when all matrix inputs are empty —
+                        // so that clearing a matrix input also clears the generated day values and their colors.
+                        for(let d=1; d<=days; d++) {
+                            let startPosToUse = globalVal;
+                            if (d <= currentPeriods.p1End && p1Val) startPosToUse = p1Val;
+                            else if (d > currentPeriods.p1End && d <= currentPeriods.p2End && p2Val) startPosToUse = p2Val;
+                            else if (d > currentPeriods.p2End && p3Val) startPosToUse = p3Val;
 
-                                const hasMatrixInput = String(startPosToUse ?? '').trim() !== '';
-                                if (hasMatrixInput) {
-                                    const val = getValForDay(d, startPosToUse, r - GRID_ROW_OFFSET + 1);
-                                    // Removed check "if (val)" to ensure empty values overwrite existing cells
-                                    const c = firstDayCol + d - 1;
-                                    await setCellValueSafely(commandService, params.unitId, params.subUnitId, sheet, r, c, val);
-                                }
+                            const hasMatrixInput = String(startPosToUse ?? '').trim() !== '';
+                            const c = firstDayCol + d - 1;
+                            if (hasMatrixInput) {
+                                const val = getValForDay(d, startPosToUse, r - GRID_ROW_OFFSET + 1);
+                                await setCellValueSafely(commandService, params.unitId, params.subUnitId, sheet, r, c, val);
+                            } else {
+                                // Clear value and reset background color when there is no matrix input for this day
+                                await setCellValueSafely(commandService, params.unitId, params.subUnitId, sheet, r, c, '', SCHEDULE_TEMPLATE.normalCell);
                             }
                         }
                     }
@@ -781,6 +1665,29 @@ export const UniverScheduleGrid = () => {
                     const globalConflictSummary = getGlobalColumnConflictSummary(sheet, lastEmployeeRow);
                     if (hasAnyGlobalColumnConflict(globalConflictSummary)) {
                         notify(`Конфликт между колони (Global и P1/P2/P3): ${buildGlobalConflictMessage(globalConflictSummary)}`, { type: 'warning' });
+                    }
+                }
+
+                const touchesMainTableDays = range.endColumn >= layout.firstDayCol && range.startColumn <= layout.lastDayCol;
+                const touchesMatrixInputs = isMatrixMode && range.endColumn >= 0 && range.startColumn <= 3;
+
+                if (touchesMainTableDays || touchesMatrixInputs) {
+                    isApplyingPeriodStylesRef.current = true;
+                    try {
+                        await runWithRecalculationIndicator(() => applyDerivedTables(
+                            commandService,
+                            params.unitId,
+                            params.subUnitId,
+                            sheet,
+                            lastEmployeeRow,
+                            layout,
+                            record.year,
+                            record.month,
+                            affectedStartRow,
+                            affectedEndRow
+                        ));
+                    } finally {
+                        isApplyingPeriodStylesRef.current = false;
                     }
                 }
         });
@@ -931,7 +1838,8 @@ export const UniverScheduleGrid = () => {
             const daysInMonth = new Date(year, month, 0).getDate();
             const isMatrixMode = isPjmPositionName(positionName);
             setShowMatrixConfig(isMatrixMode);
-            const firstDayCol = isMatrixMode ? 8 : 3;
+            const layout = getSheetLayout(isMatrixMode, daysInMonth);
+            const firstDayCol = layout.firstDayCol;
             const positionColumnWidth = getPositionColumnWidth(positionName);
             const nameColumnWidth = getNameColumnWidth(employees);
 
@@ -944,7 +1852,12 @@ export const UniverScheduleGrid = () => {
                 ? ['Global', 'P1', 'P2', 'P3', '', '№', 'Служител', 'Длъжност']
                 : ['№', 'Служител', 'Длъжност'];
             for(let i=1; i<=daysInMonth; i++) headers.push(String(i));
-            const totalCols = headers.length;
+            headers.push('№');
+            headers.push('');
+            SUMMARY_HEADERS.forEach((h) => headers.push(h));
+            headers.push('');
+            for(let i=1; i<=daysInMonth; i++) headers.push(String(i));
+            const totalCols = layout.totalColumns;
 
             const sheetData: any = {};
             const mergeData: any[] = [];
@@ -957,13 +1870,13 @@ export const UniverScheduleGrid = () => {
             sheetData[0] = { 
                 0: { v: titleText, s: SCHEDULE_TEMPLATE.title } 
             };
-            mergeData.push({ startRow: 0, endRow: 0, startColumn: 0, endColumn: totalCols - 1 });
+            mergeData.push({ startRow: 0, endRow: 0, startColumn: 0, endColumn: 40 });
 
             // Row 1: Approved By
             sheetData[1] = { 
                 [totalCols - 5]: { v: "Утвърдил: ............................", s: SCHEDULE_TEMPLATE.subTitle }
             };
-            mergeData.push({ startRow: 1, endRow: 1, startColumn: totalCols - 5, endColumn: totalCols - 1 });
+            mergeData.push({ startRow: 1, endRow: 1, startColumn: 35, endColumn: 40 });
 
             if (isMatrixMode) {
                 // Row 2: "Add row matrix" (Left)
@@ -998,11 +1911,35 @@ export const UniverScheduleGrid = () => {
                 };
             
             for(let i=1; i<=daysInMonth; i++) {
-                sheetData[headerRowIdx][firstDayCol - 1 + i] = { v: String(i), s: SCHEDULE_TEMPLATE.header };
+                const isHolidayLikeDay = isNonWorkingDay(year, month, i);
+                sheetData[headerRowIdx][firstDayCol - 1 + i] = {
+                    v: String(i),
+                    s: isHolidayLikeDay ? getWeekendCellStyle(matrixValidationColors.weekend) : SCHEDULE_TEMPLATE.header
+                };
+            }
+
+            sheetData[headerRowIdx][layout.duplicateNoCol] = { v: '№', s: SCHEDULE_TEMPLATE.header };
+
+            SUMMARY_HEADERS.forEach((header, index) => {
+                sheetData[headerRowIdx][layout.summaryStartCol + index] = {
+                    v: SUMMARY_HEADER_DISPLAY[header] || header,
+                    s: SCHEDULE_TEMPLATE.summaryHeader
+                };
+            });
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const col = layout.workedHoursStartCol - 1 + i;
+                const isHolidayLikeDay = isNonWorkingDay(year, month, i);
+                sheetData[headerRowIdx][col] = {
+                    v: String(i),
+                    s: isHolidayLikeDay ? getWeekendCellStyle(matrixValidationColors.weekend) : SCHEDULE_TEMPLATE.header
+                };
             }
 
             // Calculation for Frequencies (Global/P1/P2/P3)
-            const savedRows = record.schedule_rows || [];
+            const savedRows = tempRowsRef.current || record.schedule_rows || [];
+            const shiftCodeColumnWidth = getShiftCodeColumnWidth(savedRows, daysInMonth);
+            const summaryColumnWidths = getSummaryColumnWidths(savedRows);
             const globalCounts = new Map<string, number>();
             const p1Counts = new Map<string, number>();
             const p2Counts = new Map<string, number>();
@@ -1093,14 +2030,12 @@ export const UniverScheduleGrid = () => {
                 // Days
                 for(let d=1; d<=daysInMonth; d++) {
                     const c = firstDayCol - 1 + d;
-                    
-                    const date = new Date(year, month-1, d);
-                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                    const isHolidayLikeDay = isNonWorkingDay(year, month, d);
                     
                     const savedStyle = existing?.[`day_${d}_s`];
-                    const templateStyle = isWeekend ? getWeekendCellStyle(matrixValidationColors.weekend) : SCHEDULE_TEMPLATE.normalCell;
+                    const templateStyle = isHolidayLikeDay ? getWeekendCellStyle(matrixValidationColors.weekend) : SCHEDULE_TEMPLATE.normalCell;
                     const finalStyle = savedStyle
-                        ? (isWeekend
+                        ? (isHolidayLikeDay
                             ? { ...savedStyle, bg: { rgb: matrixValidationColors.weekend } }
                             : savedStyle)
                         : templateStyle;
@@ -1108,6 +2043,34 @@ export const UniverScheduleGrid = () => {
                     sheetData[r][c] = { 
                         v: existing?.[`day_${d}`] || '',
                         s: finalStyle
+                    };
+                }
+
+                sheetData[r][layout.duplicateNoCol] = { v: index + 1, s: SCHEDULE_TEMPLATE.matrixCell };
+
+                for (let sIdx = 0; sIdx < SUMMARY_HEADERS.length; sIdx++) {
+                    const persistedValue = sIdx === 0
+                        ? existing?.individual_norm
+                        : sIdx === 1
+                            ? existing?.current_month_balance
+                            : sIdx === 2
+                                ? existing?.previous_month_balance
+                                : sIdx === 3
+                                    ? existing?.worked_total
+                                    : existing?.period_total;
+
+                    sheetData[r][layout.summaryStartCol + sIdx] = {
+                        v: persistedValue || '',
+                        s: SCHEDULE_TEMPLATE.normalCell
+                    };
+                }
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const col = layout.workedHoursStartCol - 1 + d;
+                    const isHolidayLikeDay = isNonWorkingDay(year, month, d);
+                    sheetData[r][col] = {
+                        v: existing?.[`day_work_${d}`] || '',
+                        s: isHolidayLikeDay ? getWeekendCellStyle(matrixValidationColors.weekend) : SCHEDULE_TEMPLATE.normalCell
                     };
                 }
             });
@@ -1121,6 +2084,37 @@ export const UniverScheduleGrid = () => {
             mergeData.push({ startRow: footerRowStart, endRow: footerRowStart, startColumn: totalCols - 5, endColumn: totalCols - 1 });
             mergeData.push({ startRow: footerRowStart, endRow: footerRowStart, startColumn: 0, endColumn: 2 });
 
+            const columnData: any = {};
+
+            if (isMatrixMode) {
+                columnData[0] = { w: 50 };
+                columnData[1] = { w: 40 };
+                columnData[2] = { w: 40 };
+                columnData[3] = { w: 40 };
+                columnData[4] = { w: 20 };
+                columnData[5] = { w: 40 };
+                columnData[6] = { w: nameColumnWidth };
+                columnData[7] = { w: positionColumnWidth };
+            } else {
+                columnData[0] = { w: 40 };
+                columnData[1] = { w: nameColumnWidth };
+                columnData[2] = { w: positionColumnWidth };
+            }
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                columnData[firstDayCol - 1 + d] = { w: shiftCodeColumnWidth };
+                columnData[layout.workedHoursStartCol - 1 + d] = { w: 58 };
+            }
+
+            columnData[layout.duplicateNoCol] = { w: 42 };
+            columnData[layout.spacerAfterNoCol] = { w: 18 };
+            columnData[layout.summaryStartCol + 0] = { w: summaryColumnWidths[0] };
+            columnData[layout.summaryStartCol + 1] = { w: summaryColumnWidths[1] };
+            columnData[layout.summaryStartCol + 2] = { w: summaryColumnWidths[2] };
+            columnData[layout.summaryStartCol + 3] = { w: summaryColumnWidths[3] };
+            columnData[layout.summaryStartCol + 4] = { w: summaryColumnWidths[4] };
+            columnData[layout.spacerAfterSummary] = { w: 18 };
+
             const wbConfig = {
                 id: 'schedule-wb',
                 appVersion: '3.0.0',
@@ -1130,23 +2124,13 @@ export const UniverScheduleGrid = () => {
                         name: 'Schedule',
                         cellData: sheetData,
                         mergeData: mergeData,
-                        columnCount: headers.length,
+                        columnCount: totalCols,
                         rowCount: employees.length + GRID_ROW_OFFSET + 3, 
                         freeze: { xSplit: firstDayCol, ySplit: GRID_ROW_OFFSET },
-                        columnData: isMatrixMode
-                            ? {
-                                0: { w: 50 },
-                                1: { w: 40 }, 2: { w: 40 }, 3: { w: 40 },
-                                4: { w: 20 },
-                                5: { w: 40 },
-                                6: { w: nameColumnWidth },
-                                7: { w: positionColumnWidth },
-                            }
-                            : {
-                                0: { w: 40 },
-                                1: { w: nameColumnWidth },
-                                2: { w: positionColumnWidth },
-                            }
+                        rowData: {
+                            [headerRowIdx]: { h: 68 },
+                        },
+                        columnData
                     }
                 },
                 locale: LocaleType.EN_US,
@@ -1156,6 +2140,28 @@ export const UniverScheduleGrid = () => {
             // Re-check mount/ref before final create
             if (isMounted && univerRef.current) {
                  workbookRef.current = univerRef.current.createUnit(UniverInstanceType.UNIVER_SHEET, wbConfig);
+                 const createdSheet = workbookRef.current?.getActiveSheet?.();
+                 const lastEmployeeRow = GRID_ROW_OFFSET + employees.length - 1;
+
+                 if (createdSheet && employees.length > 0) {
+                    const derivedLayout = getSheetLayout(isMatrixMode, daysInMonth);
+                    isApplyingPeriodStylesRef.current = true;
+                    try {
+                        await runWithRecalculationIndicator(() => applyDerivedTables(
+                            commandService,
+                            workbookRef.current.getUnitId(),
+                            createdSheet.getSheetId(),
+                            createdSheet,
+                            lastEmployeeRow,
+                            derivedLayout,
+                            year,
+                            month
+                        ));
+                    } finally {
+                        isApplyingPeriodStylesRef.current = false;
+                    }
+                 }
+
                  setIsLoading(false);
             }
         })();
@@ -1164,10 +2170,21 @@ export const UniverScheduleGrid = () => {
             isMounted = false;
             cleanupUniver();
         };
-    }, [record?.id, renderTrigger]); // Depend on schedule id and manual triggers
+    }, [
+        record?.id,
+        record?.year,
+        record?.month,
+        record?.position,
+        typeof (record as any)?.schedule_rows !== 'undefined',
+        renderTrigger,
+    ]); // Reinitialize only on record identity/hydration boundary, not on every autosave payload mutation
 
     useEffect(() => {
         if (!univerRef.current || !workbookRef.current || !record?.year || !record?.month) return;
+
+        const year = Number(record.year);
+        const month = Number(record.month);
+        if (!Number.isFinite(year) || !Number.isFinite(month)) return;
 
         if (colorApplyTimeoutRef.current) {
             clearTimeout(colorApplyTimeoutRef.current);
@@ -1181,8 +2198,9 @@ export const UniverScheduleGrid = () => {
             if (employeeRowsCount <= 0) return;
             const lastEmployeeRow = GRID_ROW_OFFSET + employeeRowsCount - 1;
             const isMatrixMode = showMatrixConfigRef.current;
-            const firstDayCol = isMatrixMode ? 8 : 3;
-            const daysInMonth = sheet.getColumnCount() - firstDayCol;
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const layout = getSheetLayout(isMatrixMode, daysInMonth);
+            const firstDayCol = layout.firstDayCol;
 
             const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
 
@@ -1207,9 +2225,20 @@ export const UniverScheduleGrid = () => {
                         lastEmployeeRow,
                         firstDayCol,
                         daysInMonth,
-                        record.year,
-                        record.month
+                        year,
+                        month
                     );
+
+                    await runWithRecalculationIndicator(() => applyDerivedTables(
+                        commandService,
+                        workbookRef.current.getUnitId(),
+                        sheet.getSheetId(),
+                        sheet,
+                        lastEmployeeRow,
+                        layout,
+                        year,
+                        month
+                    ));
                 } finally {
                     isApplyingPeriodStylesRef.current = false;
                 }
@@ -1222,62 +2251,121 @@ export const UniverScheduleGrid = () => {
                 colorApplyTimeoutRef.current = null;
             }
         };
-    }, [matrixValidationColors, showMatrixConfig, record]);
+    }, [
+        matrixValidationColors,
+        showMatrixConfig,
+        record?.id,
+        record?.year,
+        record?.month,
+        weekdayShiftMinutesMap,
+        holidayShiftMinutesMap,
+        previousMonthBalanceByEmployee,
+        linkPreviousMonthBalance,
+        calendarStats?.workDays,
+        calendarStats?.workHours,
+        calendarNonWorkingDays.size,
+    ]);
 
     /* REMOVED SEPARATE CLEANUP EFFECT */
 
-    const captureGridState = () => {
-        if (!workbookRef.current) return tempRowsRef.current || record.schedule_rows || [];
-        const sheet = workbookRef.current.getActiveSheet();
-        const isMatrixMode = showMatrixConfigRef.current;
-        const firstDayCol = isMatrixMode ? 8 : 3;
-        const daysInMonth = sheet.getColumnCount() - firstDayCol;
-        const newRows: any[] = [];
-        const employees = loadedEmployeesRef.current;
-        
-        // loadedEmployees contains current visible rows in order
-        for (let i = 0; i < employees.length; i++) {
-            const r = i + GRID_ROW_OFFSET; 
-            const emp = employees[i];
-            
-            // Read matrix configs from cols 0,1,2,3 only in matrix mode
-            const matrixGlobal = isMatrixMode ? (sheet.getCell(r, 0)?.v || '') : '';
-            const matrixP1 = isMatrixMode ? (sheet.getCell(r, 1)?.v || '') : '';
-            const matrixP2 = isMatrixMode ? (sheet.getCell(r, 2)?.v || '') : '';
-            const matrixP3 = isMatrixMode ? (sheet.getCell(r, 3)?.v || '') : '';
-            
-            const rowData: any = {
-                employee_id: emp.id,
-                employee_name: emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' '),
-                matrix_global: matrixGlobal,
-                matrix_p1: matrixP1,
-                matrix_p2: matrixP2,
-                matrix_p3: matrixP3,
-            };
+    const captureRowFromSheet = (
+        sheet: any,
+        employeeIndex: number,
+        employee: any,
+        isMatrixMode: boolean,
+        daysInMonth: number,
+        firstDayCol: number,
+        layout: ReturnType<typeof getSheetLayout>
+    ) => {
+        const r = employeeIndex + GRID_ROW_OFFSET;
 
-            for(let d=1; d<=daysInMonth; d++) {
-                const c = firstDayCol - 1 + d;
-                const cell = sheet.getCell(r, c);
-                const val = cell?.v || '';
-                
-                rowData[`day_${d}`] = val;
+        const matrixGlobal = isMatrixMode ? (sheet.getCell(r, 0)?.v || '') : '';
+        const matrixP1 = isMatrixMode ? (sheet.getCell(r, 1)?.v || '') : '';
+        const matrixP2 = isMatrixMode ? (sheet.getCell(r, 2)?.v || '') : '';
+        const matrixP3 = isMatrixMode ? (sheet.getCell(r, 3)?.v || '') : '';
 
-                if (cell && cell.s) {
-                    let style = cell.s;
-                     if (typeof style === 'string' && workbookRef.current) {
-                        try {
-                             const styles = workbookRef.current.getStyles();
-                             if (styles) style = styles.get(style);
-                        } catch(e) {}
-                    }
-                    if (style) {
-                         rowData[`day_${d}_s`] = style;
-                    }
+        const rowData: any = {
+            employee_id: employee.id,
+            employee_name: employee.fullName || [employee.first_name, employee.middle_name, employee.last_name].filter(Boolean).join(' '),
+            matrix_global: matrixGlobal,
+            matrix_p1: matrixP1,
+            matrix_p2: matrixP2,
+            matrix_p3: matrixP3,
+        };
+
+        for(let d=1; d<=daysInMonth; d++) {
+            const c = firstDayCol - 1 + d;
+            const cell = sheet.getCell(r, c);
+            const val = cell?.v || '';
+
+            rowData[`day_${d}`] = val;
+
+            if (cell && cell.s) {
+                let style = cell.s;
+                if (typeof style === 'string' && workbookRef.current) {
+                    try {
+                        const styles = workbookRef.current.getStyles();
+                        if (styles) style = styles.get(style);
+                    } catch(e) {}
+                }
+                if (style) {
+                    rowData[`day_${d}_s`] = style;
                 }
             }
-            newRows.push(rowData);
+
+                const workedCell = sheet.getCell(r, layout.workedHoursStartCol - 1 + d);
+                rowData[`day_work_${d}`] = workedCell?.v || '';
         }
-        return newRows;
+
+        rowData.individual_norm = String(sheet.getCell(r, layout.summaryStartCol + 0)?.v ?? '').trim();
+        rowData.current_month_balance = String(sheet.getCell(r, layout.summaryStartCol + 1)?.v ?? '').trim();
+        rowData.previous_month_balance = String(sheet.getCell(r, layout.summaryStartCol + 2)?.v ?? '').trim();
+        rowData.worked_total = String(sheet.getCell(r, layout.summaryStartCol + 3)?.v ?? '').trim();
+        rowData.period_total = String(sheet.getCell(r, layout.summaryStartCol + 4)?.v ?? '').trim();
+
+        const parsedPeriodTotal = parseTimeToMinutes(rowData.period_total);
+        rowData.period_total_minutes = parsedPeriodTotal !== null ? parsedPeriodTotal : 0;
+
+        return rowData;
+    };
+
+    const captureGridState = (onlyDirtyRows: boolean = false) => {
+        if (!workbookRef.current) return scheduleRowsCacheRef.current || tempRowsRef.current || record.schedule_rows || [];
+        const sheet = workbookRef.current.getActiveSheet();
+        const isMatrixMode = showMatrixConfigRef.current;
+        const daysInMonth = new Date(record.year, record.month, 0).getDate();
+        const layout = getSheetLayout(isMatrixMode, daysInMonth);
+        const firstDayCol = layout.firstDayCol;
+        const employees = loadedEmployeesRef.current;
+
+        const mustCaptureAll = !onlyDirtyRows
+            || !scheduleRowsCacheRef.current
+            || scheduleRowsCacheRef.current.length !== employees.length;
+
+        if (mustCaptureAll) {
+            const fullRows: any[] = [];
+            for (let i = 0; i < employees.length; i++) {
+                fullRows.push(captureRowFromSheet(sheet, i, employees[i], isMatrixMode, daysInMonth, firstDayCol, layout));
+            }
+            scheduleRowsCacheRef.current = fullRows;
+            dirtyEmployeeRowIndexesRef.current.clear();
+            return fullRows;
+        }
+
+        const dirtyIndexes = dirtyEmployeeRowIndexesRef.current;
+        if (dirtyIndexes.size === 0) {
+            return scheduleRowsCacheRef.current || [];
+        }
+
+        const nextRows = (scheduleRowsCacheRef.current || []).slice();
+        dirtyIndexes.forEach((employeeIndex: number) => {
+            if (employeeIndex < 0 || employeeIndex >= employees.length) return;
+            nextRows[employeeIndex] = captureRowFromSheet(sheet, employeeIndex, employees[employeeIndex], isMatrixMode, daysInMonth, firstDayCol, layout);
+        });
+
+        scheduleRowsCacheRef.current = nextRows;
+        dirtyEmployeeRowIndexesRef.current.clear();
+        return nextRows;
     };
 
     const persistSchedule = async (silent: boolean = false) => {
@@ -1293,24 +2381,36 @@ export const UniverScheduleGrid = () => {
 
         const payload = {
             position: typeof record.position === 'object' ? record.position['@id'] : record.position,
+            weekday_shift_schedule: weekdayShiftScheduleRef.current || getScheduleRefValue((record as any)?.weekday_shift_schedule) || null,
+            holiday_shift_schedule: holidayShiftScheduleRef.current || getScheduleRefValue((record as any)?.holiday_shift_schedule) || null,
+            link_previous_month_balance: linkPreviousMonthBalanceRef.current,
             year: record.year,
             month: record.month,
-            schedule_rows: captureGridState(),
+            schedule_rows: captureGridState(silent),
             status: record.status || 'чернова',
             working_days: calendarStats ? calendarStats.workDays : record.working_days,
             working_hours: calendarStats ? calendarStats.workHours : record.working_hours,
         };
 
-        await new Promise<void>((resolve, reject) => {
-            update('monthly_schedules', {
+        if (silent) {
+            const result = await dataProvider.update('monthly_schedules', {
                 id: record.id,
                 data: payload,
-                previousData: record
-            }, {
-                onSuccess: () => resolve(),
-                onError: (error: any) => reject(error)
+                previousData: record,
             });
+            lastLocalSaveAtRef.current = Date.now();
+            lastKnownScheduleVersionRef.current = buildScheduleVersionSignature(payload);
+            return;
+        }
+
+        const result = await dataProvider.update('monthly_schedules', {
+            id: record.id,
+            data: payload,
+            previousData: record,
         });
+
+        lastLocalSaveAtRef.current = Date.now();
+        lastKnownScheduleVersionRef.current = buildScheduleVersionSignature(payload);
 
         if (!silent) {
             notify('Графикът е запазен успешно', { type: 'success' });
@@ -1356,7 +2456,28 @@ export const UniverScheduleGrid = () => {
             clearTimeout(autoSaveTimeoutRef.current);
         }
 
+        if (autoSaveIdleCallbackRef.current !== null && typeof window !== 'undefined') {
+            const cancelIdle = (window as any).cancelIdleCallback;
+            if (typeof cancelIdle === 'function') {
+                cancelIdle(autoSaveIdleCallbackRef.current);
+            }
+            autoSaveIdleCallbackRef.current = null;
+        }
+
         autoSaveTimeoutRef.current = setTimeout(() => {
+            autoSaveTimeoutRef.current = null;
+
+            if (typeof window !== 'undefined') {
+                const requestIdle = (window as any).requestIdleCallback;
+                if (typeof requestIdle === 'function') {
+                    autoSaveIdleCallbackRef.current = requestIdle(() => {
+                        autoSaveIdleCallbackRef.current = null;
+                        void runAutoSave();
+                    }, { timeout: 1500 });
+                    return;
+                }
+            }
+
             void runAutoSave();
         }, AUTO_SAVE_DEBOUNCE_MS);
     };
@@ -1390,6 +2511,8 @@ export const UniverScheduleGrid = () => {
         
         const newRows = [...currentRows, newRow];
         tempRowsRef.current = newRows;
+        scheduleRowsCacheRef.current = null;
+        dirtyEmployeeRowIndexesRef.current.clear();
         
         if (univerRef.current) {
             univerRef.current.dispose();
@@ -1406,6 +2529,8 @@ export const UniverScheduleGrid = () => {
          const newRows = currentRows.filter(r => r.employee_id !== empId);
          
          tempRowsRef.current = newRows;
+         scheduleRowsCacheRef.current = null;
+         dirtyEmployeeRowIndexesRef.current.clear();
          
          // Remove from available list if needed? Or just let it be re-fetched next time dialog opens
          // If we remove him, he should be available to add back.
@@ -1440,6 +2565,8 @@ export const UniverScheduleGrid = () => {
         // In production, we must use `patterns` and `OrderPatternDetails`.
         
         const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
+        const daysInMonth = new Date(record.year, record.month, 0).getDate();
+        const layout = getSheetLayout(true, daysInMonth);
 
         // Find the source matrix rows based on selection
         const selectedMatrix = matrixData.find(m => String(m.id) === selectedMatrixId);
@@ -1463,8 +2590,8 @@ export const UniverScheduleGrid = () => {
              const p3Val = sheet.getCell(r, 3)?.v;
              
              if (globalVal || p1Val || p2Val || p3Val) {
-                 const firstDayCol = 8;
-                 const days = sheet.getColumnCount() - firstDayCol;
+                 const firstDayCol = layout.firstDayCol;
+                 const days = daysInMonth;
                  for(let d=1; d<=days; d++) {
                      let startPosToUse = globalVal;
                      // Logic for dates...
@@ -1518,6 +2645,22 @@ export const UniverScheduleGrid = () => {
             notify(`Конфликт между колони (Global и P1/P2/P3): ${buildGlobalConflictMessage(globalConflictSummary)}`, { type: 'warning' });
         }
 
+        isApplyingPeriodStylesRef.current = true;
+        try {
+            await runWithRecalculationIndicator(() => applyDerivedTables(
+                commandService,
+                wb.getUnitId(),
+                sheet.getSheetId(),
+                sheet,
+                lastEmployeeRow,
+                layout,
+                record.year,
+                record.month
+            ));
+        } finally {
+            isApplyingPeriodStylesRef.current = false;
+        }
+
         notify("Графикът е попълнен от настройките на матрицата.", { type: 'success' });
     };
 
@@ -1530,6 +2673,14 @@ export const UniverScheduleGrid = () => {
         if (autoSaveTimeoutRef.current) {
             clearTimeout(autoSaveTimeoutRef.current);
             autoSaveTimeoutRef.current = null;
+        }
+
+        if (autoSaveIdleCallbackRef.current !== null && typeof window !== 'undefined') {
+            const cancelIdle = (window as any).cancelIdleCallback;
+            if (typeof cancelIdle === 'function') {
+                cancelIdle(autoSaveIdleCallbackRef.current);
+            }
+            autoSaveIdleCallbackRef.current = null;
         }
 
         isSavingRef.current = true;
@@ -1711,6 +2862,108 @@ export const UniverScheduleGrid = () => {
                         </Button>
                     </>
                 )}
+
+                <Box display="flex" alignItems="center" gap={1}>
+                    <Typography variant="body2" fontWeight="bold">Делник:</Typography>
+                    <FormControl size="small" sx={{ minWidth: 220 }}>
+                        <Select
+                            value={weekdayShiftSchedule}
+                            onChange={(e) => setWeekdayShiftSchedule(String(e.target.value))}
+                            displayEmpty
+                        >
+                            <MenuItem value=""><em>График за делник</em></MenuItem>
+                            {shiftScheduleOptions.map((s: any) => (
+                                <MenuItem key={String(s.id)} value={String(s['@id'] || `/shift_schedules/${s.id}`)}>
+                                    {s.name || `График #${s.id}`}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+
+                <Box display="flex" alignItems="center" gap={1}>
+                    <Typography variant="body2" fontWeight="bold">Празник:</Typography>
+                    <FormControl size="small" sx={{ minWidth: 220 }}>
+                        <Select
+                            value={holidayShiftSchedule}
+                            onChange={(e) => setHolidayShiftSchedule(String(e.target.value))}
+                            displayEmpty
+                        >
+                            <MenuItem value=""><em>График за празник</em></MenuItem>
+                            {shiftScheduleOptions.map((s: any) => (
+                                <MenuItem key={`h-${String(s.id)}`} value={String(s['@id'] || `/shift_schedules/${s.id}`)}>
+                                    {s.name || `График #${s.id}`}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+
+                <FormControlLabel
+                    control={
+                        <Switch
+                            checked={linkPreviousMonthBalance}
+                            onChange={(e) => setLinkPreviousMonthBalance(e.target.checked)}
+                        />
+                    }
+                    label="Вземи +/- от минал месец"
+                />
+
+                <Box
+                    display="flex"
+                    alignItems="center"
+                    px={1.5}
+                    py={0.75}
+                    borderRadius={1}
+                    bgcolor={
+                        previousMonthStatus === 'found'
+                            ? '#e8f5e9'
+                            : previousMonthStatus === 'missing'
+                                ? '#fff3e0'
+                                : previousMonthStatus === 'error'
+                                    ? '#ffebee'
+                                    : previousMonthStatus === 'loading'
+                                        ? '#e3f2fd'
+                                        : '#f3f4f6'
+                    }
+                    border={
+                        previousMonthStatus === 'found'
+                            ? '1px solid #a5d6a7'
+                            : previousMonthStatus === 'missing'
+                                ? '1px solid #ffcc80'
+                                : previousMonthStatus === 'error'
+                                    ? '1px solid #ef9a9a'
+                                    : previousMonthStatus === 'loading'
+                                        ? '1px solid #90caf9'
+                                        : '1px solid #d1d5db'
+                    }
+                    gap={1}
+                >
+                    {previousMonthStatus === 'loading' && <CircularProgress size={14} />}
+                    <Typography variant="caption" fontWeight="bold" color={previousMonthStatus === 'error' ? 'error.main' : 'textSecondary'}>
+                        {previousMonthStatus === 'off' && 'Минал месец: изкл.'}
+                        {previousMonthStatus === 'loading' && `Минал месец: търси ${previousMonthLabel || ''}`}
+                        {previousMonthStatus === 'found' && `Минал месец: намерен ${previousMonthLabel || ''}`}
+                        {previousMonthStatus === 'missing' && `Минал месец: няма данни за ${previousMonthLabel || ''}`}
+                        {previousMonthStatus === 'error' && 'Минал месец: грешка при зареждане'}
+                    </Typography>
+                </Box>
+
+                <Box
+                    display="flex"
+                    alignItems="center"
+                    px={1.5}
+                    py={0.75}
+                    borderRadius={1}
+                    bgcolor={isRecalculating ? '#e3f2fd' : '#f3f4f6'}
+                    border={isRecalculating ? '1px solid #90caf9' : '1px solid #d1d5db'}
+                    gap={1}
+                >
+                    {isRecalculating && <CircularProgress size={14} />}
+                    <Typography variant="caption" fontWeight="bold" color="textSecondary">
+                        {isRecalculating ? 'Преизчисляване...' : 'Преизчисляване: готово'}
+                    </Typography>
+                </Box>
                 {/* Auto -Fill Button 
                 <Button variant="contained" onClick={handleCalculate} color="secondary" size="small">
                     Авто-Попълване
