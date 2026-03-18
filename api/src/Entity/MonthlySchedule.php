@@ -12,7 +12,9 @@ use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use ApiPlatform\Metadata\Delete;
+use App\Controller\RecalculatePersonalAccountsController;
 use App\Repository\MonthlyScheduleRepository;
+use App\State\MonthlyScheduleStateProcessor;
 use App\Enum\ScheduleStatus;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -26,9 +28,18 @@ use Symfony\Component\Serializer\Annotation\Groups;
     paginationItemsPerPage: 20,
     operations: [
         new GetCollection(normalizationContext: ['groups' => ['schedule:list']]),
-        new Post(),
+        new Post(processor: MonthlyScheduleStateProcessor::class),
         new Get(),
-        new Put(),
+        new Put(processor: MonthlyScheduleStateProcessor::class),
+        new Post(
+            uriTemplate: '/monthly_schedules/{id}/personal_accounts/recalculate',
+            routePrefix: '',
+            controller: RecalculatePersonalAccountsController::class,
+            deserialize: false,
+            validate: false,
+            output: false,
+            name: 'monthly_schedule_recalculate_personal_accounts'
+        ),
         new Delete(),
     ]
 )]

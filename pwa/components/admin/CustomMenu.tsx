@@ -16,6 +16,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import TrainIcon from '@mui/icons-material/Train';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 export const CustomMenu = () => {
   const [employeesOpen, setEmployeesOpen] = React.useState(false);
@@ -110,6 +111,12 @@ export const CustomMenu = () => {
         to="/monthly_schedules"
         primaryText="Месечен график"
         leftIcon={<CalendarMonthIcon />}
+      />
+
+      <MenuItemLink
+        to="/personal_accounts"
+        primaryText="Лични сметки"
+        leftIcon={<ReceiptLongIcon />}
       />
 
       <MenuItemLink

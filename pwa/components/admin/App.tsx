@@ -48,6 +48,7 @@ import { TrainScheduleLineList } from "./train_schedules/TrainScheduleLineList";
 import { TrainDiagramList } from "./train_diagrams/TrainDiagramList";
 import { TrainDiagramCreate } from "./train_diagrams/TrainDiagramCreate";
 import { TrainDiagramShow } from "./train_diagrams/TrainDiagramShow";
+import { PersonalAccountsList, PersonalAccountCreate, PersonalAccountEdit } from "./personal_accounts";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -338,6 +339,13 @@ const App = () => {
       <ResourceGuesser name="order_pattern_details" list={PatternDetailList} create={PatternDetailCreate} edit={PatternDetailEdit} />
       <ResourceGuesser name="matrices" list={MatrixList} create={MatrixCreate} show={MatrixShow} edit={MatrixEdit} />
       <ResourceGuesser name="monthly_schedules" list={MonthlyScheduleList} create={MonthlyScheduleCreate} edit={MonthlyScheduleEdit} />
+      <ResourceGuesser
+        name="personal_accounts"
+        list={PersonalAccountsList}
+        create={PersonalAccountCreate}
+        edit={PersonalAccountEdit}
+        options={{ label: "Лични сметки" }}
+      />
       <ResourceGuesser name="calendars" list={CalendarList} create={CalendarCreate} edit={CalendarEdit} show={CalendarShow} />
       <ResourceGuesser name="train_schedules" list={TrainScheduleList} create={TrainScheduleCreate} edit={TrainScheduleEdit} show={TrainScheduleShow} />
       <ResourceGuesser name="train_schedule_lines" list={TrainScheduleLineList} />
@@ -347,6 +355,8 @@ const App = () => {
         <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
         <Route path="/shifts/bulk-import" element={<ShiftsBulkImport />} />
         <Route path="/patterns/bulk-import" element={<PatternBulkImport />} />
+        <Route path="/personal-accounts-period/:year/:month" element={<PersonalAccountsList />} />
+        <Route path="/personal-accounts-period/:year/:month/:id" element={<PersonalAccountEdit />} />
       </CustomRoutes>
     </AnyHydraAdmin>
   );
