@@ -25,9 +25,9 @@ use Symfony\Component\Validator\Constraints as Assert;
     mercure: true,
     normalizationContext: ['groups' => ['personal_account:read']],
     denormalizationContext: ['groups' => ['personal_account:write']],
-    paginationItemsPerPage: 30,
-    paginationClientEnabled: true,
-    paginationClientItemsPerPage: true,
+    paginationItemsPerPage: 1000,
+    paginationClientEnabled: false,
+    paginationClientItemsPerPage: false,
     operations: [
         new GetCollection(normalizationContext: ['groups' => ['personal_account:list']]),
         new Get(),
@@ -67,7 +67,7 @@ class PersonalAccount
     #[ORM\ManyToOne(targetEntity: Employees::class, fetch: 'LAZY')]
     #[ORM\JoinColumn(nullable: false)]
     #[Assert\NotNull(message: 'Служителят е задължителен')]
-    #[Groups(['personal_account:list', 'personal_account:read', 'personal_account:write'])]
+    #[Groups(['personal_account:read', 'personal_account:write'])]
     #[ApiProperty(readableLink: false, writableLink: false, description: 'Машинист ПЖМ')]
     private ?Employees $employee = null;
 
@@ -86,7 +86,7 @@ class PersonalAccount
     #[ORM\ManyToOne(targetEntity: MonthlySchedule::class, fetch: 'LAZY')]
     #[ORM\JoinColumn(nullable: false)]
     #[Assert\NotNull(message: 'Месечният график е задължителен')]
-    #[Groups(['personal_account:list', 'personal_account:read', 'personal_account:write'])]
+    #[Groups(['personal_account:read', 'personal_account:write'])]
     #[ApiProperty(readableLink: false, writableLink: false, description: 'Източник месечен график')]
     private ?MonthlySchedule $monthly_schedule = null;
 
@@ -124,6 +124,11 @@ class PersonalAccount
     #[Groups(['personal_account:list', 'personal_account:read'])]
     #[ApiProperty(description: 'Отработено време + корекция 1,143 в минути')]
     private int $worked_with_correction_minutes = 0;
+
+    #[ORM\Column(type: Types::INTEGER, options: ['default' => 0])]
+    #[Groups(['personal_account:list', 'personal_account:read'])]
+    #[ApiProperty(description: 'Нулево време в минути')]
+    private int $zero_time_minutes = 0;
 
     #[ORM\Column(type: Types::FLOAT, options: ['default' => '0'])]
     #[Groups(['personal_account:list', 'personal_account:read'])]
@@ -307,6 +312,18 @@ class PersonalAccount
     public function setWorkedWithCorrectionMinutes(int $worked_with_correction_minutes): static
     {
         $this->worked_with_correction_minutes = $worked_with_correction_minutes;
+
+        return $this;
+    }
+
+    public function getZeroTimeMinutes(): int
+    {
+        return $this->zero_time_minutes;
+    }
+
+    public function setZeroTimeMinutes(int $zero_time_minutes): static
+    {
+        $this->zero_time_minutes = $zero_time_minutes;
 
         return $this;
     }

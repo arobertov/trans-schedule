@@ -90,6 +90,7 @@ final readonly class PersonalAccountCalculator
             $account->setNightWorkMinutes(0);
             $account->setNightCorrection1143Minutes(0);
             $account->setWorkedWithCorrectionMinutes(0);
+            $account->setZeroTimeMinutes(0);
             $account->setKilometersTotal(0);
             $account->setNightWorkX24(number_format(0, 2, '.', ''));
             $account->setCurrentMonthBalanceMinutes(0);
@@ -108,6 +109,7 @@ final readonly class PersonalAccountCalculator
         $exemptCount = 0;
         $workedTotalMinutes = 0;
         $nightTotalMinutes = 0;
+        $zeroTotalMinutes = 0;
         $kilometersTotal = 0.0;
 
         for ($day = 1; $day <= $daysInMonth; $day++) {
@@ -123,8 +125,8 @@ final readonly class PersonalAccountCalculator
             $date = sprintf('%04d-%02d-%02d', $year, $month, $day);
             $isHolidayLikeDay = $this->isHolidayLikeDay($year, $month, $day);
             $shiftData = $isHolidayLikeDay
-                ? ($maps['holiday'][$shiftCode] ?? ['worked' => 0, 'night' => 0, 'km' => 0.0])
-                : ($maps['weekday'][$shiftCode] ?? ['worked' => 0, 'night' => 0, 'km' => 0.0]);
+                ? ($maps['holiday'][$shiftCode] ?? ['worked' => 0, 'night' => 0, 'zero' => 0, 'km' => 0.0])
+                : ($maps['weekday'][$shiftCode] ?? ['worked' => 0, 'night' => 0, 'zero' => 0, 'km' => 0.0]);
 
             $protocolDpk = $existingProtocolByDate[$date] ?? 0.0;
             $kilometersBase = (float) ($shiftData['km'] ?? 0.0);
@@ -132,9 +134,11 @@ final readonly class PersonalAccountCalculator
 
             $workedMinutes = (int) ($shiftData['worked'] ?? 0);
             $nightMinutes = (int) ($shiftData['night'] ?? 0);
+            $zeroMinutes = (int) ($shiftData['zero'] ?? 0);
 
             $workedTotalMinutes += $workedMinutes;
             $nightTotalMinutes += $nightMinutes;
+            $zeroTotalMinutes += $zeroMinutes;
             $kilometersTotal += $kilometersWithProtocol;
 
             $detailRows[] = [
@@ -165,6 +169,7 @@ final readonly class PersonalAccountCalculator
         $account->setNightWorkMinutes($nightTotalMinutes);
         $account->setNightCorrection1143Minutes($nightCorrectionMinutes);
         $account->setWorkedWithCorrectionMinutes($workedWithCorrectionMinutes);
+        $account->setZeroTimeMinutes($zeroTotalMinutes);
         $account->setKilometersTotal(round($kilometersTotal, 2));
         $account->setNightWorkX24(number_format($nightTotalMinutes / 60, 2, '.', ''));
         $account->setPreviousMonthBalanceMinutes($previousMonthBalance);
@@ -275,7 +280,7 @@ final readonly class PersonalAccountCalculator
     /**
      * @param ShiftScheduleDetails[] $details
      *
-     * @return array<string, array{worked:int, night:int, km:float}>
+    * @return array<string, array{worked:int, night:int, zero:int, km:float}>
      */
     private function mapShiftDetails(array $details): array
     {
@@ -290,6 +295,7 @@ final readonly class PersonalAccountCalculator
             $map[$code] = [
                 'worked' => $this->parseHHMMToMinutes($detail->getWorkedTime()),
                 'night' => $this->parseHHMMToMinutes($detail->getNightWork()),
+                'zero' => $this->parseHHMMToMinutes($detail->getZeroTime()),
                 'km' => round((float) $detail->getKilometers(), 2),
             ];
         }

@@ -60,7 +60,6 @@ const normalizeEmployeeId = (value: unknown): string => {
 
 const PersonalAccountsMonthList = ({ year, month }: { year: number; month: number }) => {
     const dataProvider = useDataProvider();
-    const [scheduleOrderByEmployeeId, setScheduleOrderByEmployeeId] = useState<Map<string, number>>(new Map());
     const [scheduleOrderByName, setScheduleOrderByName] = useState<Map<string, number>>(new Map());
 
     useEffect(() => {
@@ -99,27 +98,65 @@ const PersonalAccountsMonthList = ({ year, month }: { year: number; month: numbe
                     }
                 }
 
-                const orderMapByEmployeeId = new Map<string, number>();
                 const orderMapByName = new Map<string, number>();
+                const missingNameEmployeeIds = new Set<string>();
+
                 resolvedRows.forEach((row: any, index: number) => {
                     const employeeIdKey = normalizeEmployeeId(row?.employee_id);
-                    if (employeeIdKey && !orderMapByEmployeeId.has(employeeIdKey)) {
-                        orderMapByEmployeeId.set(employeeIdKey, index + 1);
-                    }
 
                     const nameKey = normalizeEmployeeName(row?.employee_name);
                     if (nameKey && !orderMapByName.has(nameKey)) {
                         orderMapByName.set(nameKey, index + 1);
+                        return;
+                    }
+
+                    if (employeeIdKey) {
+                        missingNameEmployeeIds.add(employeeIdKey);
                     }
                 });
 
+                if (missingNameEmployeeIds.size > 0) {
+                    try {
+                        const { data: employees } = await dataProvider.getMany('employees', {
+                            ids: Array.from(missingNameEmployeeIds),
+                        });
+
+                        const nameById = new Map<string, string>();
+                        (Array.isArray(employees) ? employees : []).forEach((employee: any) => {
+                            const id = normalizeEmployeeId(employee?.id ?? employee?.['@id']);
+                            const fullName = [employee?.first_name, employee?.middle_name, employee?.last_name]
+                                .filter(Boolean)
+                                .join(' ')
+                                .trim();
+
+                            if (id && fullName) {
+                                nameById.set(id, fullName);
+                            }
+                        });
+
+                        resolvedRows.forEach((row: any, index: number) => {
+                            const existingName = normalizeEmployeeName(row?.employee_name);
+                            if (existingName) {
+                                return;
+                            }
+
+                            const employeeIdKey = normalizeEmployeeId(row?.employee_id);
+                            const resolvedName = nameById.get(employeeIdKey);
+                            const nameKey = normalizeEmployeeName(resolvedName);
+                            if (nameKey && !orderMapByName.has(nameKey)) {
+                                orderMapByName.set(nameKey, index + 1);
+                            }
+                        });
+                    } catch {
+                        // If employee lookup fails we keep numbering only for rows with names.
+                    }
+                }
+
                 if (isMounted) {
-                    setScheduleOrderByEmployeeId(orderMapByEmployeeId);
                     setScheduleOrderByName(orderMapByName);
                 }
             } catch {
                 if (isMounted) {
-                    setScheduleOrderByEmployeeId(new Map());
                     setScheduleOrderByName(new Map());
                 }
             }
@@ -139,7 +176,7 @@ const PersonalAccountsMonthList = ({ year, month }: { year: number; month: numbe
                     Лични сметки за {BG_MONTH_NAMES[month] || `Месец ${month}`} {year}
                 </Typography>
                 <Button component={Link} to="/personal_accounts" variant="outlined" size="small">
-                    Назад към месеци
+                    Назад към личните сметки по месеци
                 </Button>
             </Box>
 
@@ -148,12 +185,6 @@ const PersonalAccountsMonthList = ({ year, month }: { year: number; month: numbe
                     <FunctionField
                         label="№"
                         render={(record: any) => {
-                            const employeeIdKey = normalizeEmployeeId(record?.employee);
-                            const orderByEmployeeId = scheduleOrderByEmployeeId.get(employeeIdKey);
-                            if (orderByEmployeeId !== undefined) {
-                                return orderByEmployeeId;
-                            }
-
                             const key = normalizeEmployeeName(record?.employee_name);
                             const orderByName = scheduleOrderByName.get(key);
                             return orderByName ?? '-';
