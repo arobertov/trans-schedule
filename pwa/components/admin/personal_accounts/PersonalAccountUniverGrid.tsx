@@ -27,12 +27,15 @@ import UniverUIEnUS from '@univerjs/ui/locale/en-US';
 import { formatDecimalBg, formatMinutesToHHMM, parseDecimal } from './timeFormat';
 
 const COLUMNS = ['Дата', 'Смяна', 'Отработено време', 'Нощен труд', 'Километри', 'Протокол ДПК'];
-const SUMMARY_HEADERS = [
+// Два реда за по-компактна таблица
+const SUMMARY_HEADERS_ROW_1 = [
     'Индивид. норма',
-    'Корекция 1,143',
     'Отработ. време',
     'Нощен труд',
+    'Корекция 1,143',
     'Килом. общо',
+];
+const SUMMARY_HEADERS_ROW_2 = [
     'Отр. време + Корекция 1,143',
     'Нулево време',
     'Нощен труд x24',
@@ -40,6 +43,7 @@ const SUMMARY_HEADERS = [
     '(+/-) за текущ месец',
     'Общо за периода',
 ];
+const SUMMARY_HEADERS = [...SUMMARY_HEADERS_ROW_1, ...SUMMARY_HEADERS_ROW_2];
 const BG_MONTH_NAMES: Record<number, string> = {
     1: 'ЯНУАРИ',
     2: 'ФЕВРУАРИ',
@@ -59,11 +63,11 @@ const HOLIDAY_BG = '#A7A7A7';
 const HEADER_BG = '#EEECE1';
 const BORDER_COLOR = '#B7B7B7';
 
-const TITLE_ROW = 0;
-const SUBTITLE_NAME_ROW = 1;
-const SUBTITLE_PERIOD_ROW = 2;
-const TABLE_HEADER_ROW = 4;
-const TABLE_DATA_START_ROW = 5;
+const TITLE_ROW = 1;
+const SUBTITLE_NAME_ROW = 2;
+const SUBTITLE_PERIOD_ROW = 3;
+const TABLE_HEADER_ROW = 5;
+const TABLE_DATA_START_ROW = 6;
 const SUMMARY_KM_TOTAL_COL = 5; // SUMMARY_HEADERS index 4 + 1 offset
 
 const makeBorder = () => ({
@@ -498,9 +502,11 @@ export const PersonalAccountUniverGrid = () => {
 
         univerRef.current = univer;
 
-        const summaryHeaderRow = TABLE_DATA_START_ROW + daysInMonth + 1;
-        const summaryValuesRow = summaryHeaderRow + 1;
-        const rowCount = Math.max(summaryValuesRow + 2, 30);
+        const summaryHeaderRow1 = TABLE_DATA_START_ROW + daysInMonth + 1;
+        const summaryHeaderRow2 = summaryHeaderRow1 + 2;
+        const summaryValuesRow1 = summaryHeaderRow1 + 1;
+        const summaryValuesRow2 = summaryHeaderRow2 + 1;
+        const rowCount = Math.max(summaryValuesRow2 + 2, 30);
         const columnCount = Math.max(12, SUMMARY_HEADERS.length + 1);
 
         const borderCell = {
@@ -513,24 +519,46 @@ export const PersonalAccountUniverGrid = () => {
         const tableHeaderStyle = {
             ...borderCell,
             fw: 1,
+            tb: 3,
+            h: 60,
+            bg: { rgb: HEADER_BG },
+        };
+
+        const tableSummaryHeaderStyle = {
+            ...borderCell,
+            fw: 1,
+            tb: 3,
+            h: 100,
+            bl: 1,
             bg: { rgb: HEADER_BG },
         };
         const summaryValueStyle = { ...borderCell, fw: 1 };
 
+        const mergeData = [
+            { startRow: TITLE_ROW, endRow: TITLE_ROW, startColumn: 0, endColumn: 5 },
+            { startRow: SUBTITLE_NAME_ROW, endRow: SUBTITLE_NAME_ROW, startColumn: 0, endColumn: 5 },
+            { startRow: SUBTITLE_PERIOD_ROW, endRow: SUBTITLE_PERIOD_ROW, startColumn: 0, endColumn: 2 },
+            { startRow: summaryHeaderRow1, endRow: summaryHeaderRow2 - 1, startColumn: 0, endColumn: 0 },
+        ];
+
         const sheetData: Record<number, Record<number, any>> = {
             [TITLE_ROW]: {
-                0: { v: 'ЛИЧНА СМЕТКА', s: { fw: 1, fs: 16, ht: 2, vt: 2 } },
+                0: {
+                    v: 'ЛИЧНА СМЕТКА',
+                    s: { ff: 'Sofia Sans', fs: 22, fw: 1, ht: 2, vt: 2, tb: 2, bl: 1 },
+                },
+
             },
             [SUBTITLE_NAME_ROW]: {
                 0: {
                     v: `на ${String(record?.employee_name ?? '').toUpperCase()} - МАШИНИСТ ПЖМ`,
-                    s: { fw: 1 },
+                    s: { ff: 'Sofia Sans', fs: 13, ht: 2, vt: 2, bl: 1, },
                 },
             },
             [SUBTITLE_PERIOD_ROW]: {
                 0: {
-                    v: `ЗА МЕСЕЦ ${BG_MONTH_NAMES[safeMonth] || String(safeMonth)} ${safeYear} ГОД.`,
-                    s: { fw: 1 },
+                    v: `за месец ${BG_MONTH_NAMES[safeMonth] || String(safeMonth)} ${safeYear} год.`,
+                    s: { ff: 'Sofia Sans', fs: 13, ht: 2, vt: 2, bl: 1 },
                 },
             },
             [TABLE_HEADER_ROW]: {},
@@ -557,22 +585,22 @@ export const PersonalAccountUniverGrid = () => {
             };
         });
 
-        sheetData[summaryHeaderRow] = {
-            0: { v: 'Обобщени стойности', s: tableHeaderStyle },
+        // Header 1 + Data 1
+        sheetData[summaryHeaderRow1] = {
+            0: { v: 'Обобщени стойности', s: tableSummaryHeaderStyle },
         };
-
-        SUMMARY_HEADERS.forEach((label, index) => {
-            sheetData[summaryHeaderRow][index + 1] = { v: label, s: tableHeaderStyle };
+        SUMMARY_HEADERS_ROW_1.forEach((label, index) => {
+            sheetData[summaryHeaderRow1][index + 1] = { v: label, s: tableSummaryHeaderStyle };
         });
-
+        sheetData[summaryValuesRow1] = { 0: { v: '', s: summaryValueStyle } };
         const zeroTimeMinutes = Number.isFinite(Number(record?.zero_time_minutes))
             ? Number(record?.zero_time_minutes)
             : null;
         const summaryValues = [
             formatMinutesToHHMM(record?.individual_norm_minutes ?? 0),
-            formatMinutesToHHMM(record?.night_correction_1143_minutes ?? 0),
             formatMinutesToHHMM(record?.worked_time_minutes ?? 0),
             formatMinutesToHHMM(record?.night_work_minutes ?? 0),
+            formatMinutesToHHMM(record?.night_correction_1143_minutes ?? 0),
             formatDecimalBg(record?.kilometers_total ?? 0),
             formatMinutesToHHMM(record?.worked_with_correction_minutes ?? 0),
             zeroTimeMinutes === null ? '-' : formatMinutesToHHMM(zeroTimeMinutes),
@@ -581,15 +609,24 @@ export const PersonalAccountUniverGrid = () => {
             formatMinutesToHHMM(record?.current_month_balance_minutes ?? 0),
             formatMinutesToHHMM(record?.period_total_minutes ?? 0),
         ];
-
-        sheetData[summaryValuesRow] = {};
-        summaryValues.forEach((value, index) => {
-            sheetData[summaryValuesRow][index + 1] = { v: value, s: summaryValueStyle };
+        // Данни 1
+        summaryValues.slice(0, SUMMARY_HEADERS_ROW_1.length).forEach((value, index) => {
+            sheetData[summaryValuesRow1][index + 1] = { v: value, s: summaryValueStyle };
+        });
+        // Header 2
+        sheetData[summaryHeaderRow2] = { 0: { v: '', s: tableSummaryHeaderStyle } };
+        SUMMARY_HEADERS_ROW_2.forEach((label, index) => {
+            sheetData[summaryHeaderRow2][index] = { v: label, s: tableSummaryHeaderStyle };
+        });
+        // Данни 2
+        sheetData[summaryValuesRow2] = { 0: { v: '', s: summaryValueStyle } };
+        summaryValues.slice(SUMMARY_HEADERS_ROW_1.length).forEach((value, index) => {
+            sheetData[summaryValuesRow2][index] = { v: value, s: summaryValueStyle };
         });
 
         const columnData: Record<number, { w: number }> = {
-            0: { w: 52 },
-            1: { w: 70 },
+            0: { w: 80 },
+            1: { w: 86 },
             2: { w: 86 },
             3: { w: 86 },
             4: { w: 82 },
@@ -612,8 +649,14 @@ export const PersonalAccountUniverGrid = () => {
                     rowCount,
                     columnCount,
                     cellData: sheetData,
+                    mergeData,
                     rowData: {
-                        [TABLE_HEADER_ROW]: { h: 42 },
+                        [TITLE_ROW]: { h: 60 },
+                        [SUBTITLE_NAME_ROW]: { h: 40 },
+                        [SUBTITLE_PERIOD_ROW]: { h: 30 },
+                        [TABLE_HEADER_ROW]: { h: 60 },
+                        [summaryHeaderRow1]: { h: 50 },
+                        [summaryHeaderRow2]: { h: 50 },
                     },
                     columnData,
                 },
@@ -630,7 +673,7 @@ export const PersonalAccountUniverGrid = () => {
             const initialSheet = wb.getActiveSheet();
             const { signature, total } = computeKmSignatureAndTotal(initialSheet, daysInMonth);
             lastKmSignatureRef.current = signature;
-            void setSummaryKmTotalIfChanged(commandService, wb, initialSheet, summaryValuesRow, total);
+            void setSummaryKmTotalIfChanged(commandService, wb, initialSheet, summaryValuesRow1, total);
         }
 
         window.setTimeout(() => {
@@ -663,7 +706,7 @@ export const PersonalAccountUniverGrid = () => {
             }
 
             lastKmSignatureRef.current = signature;
-            void setSummaryKmTotalIfChanged(commandService, workbook, sheet, summaryValuesRow, total);
+            void setSummaryKmTotalIfChanged(commandService, workbook, sheet, summaryValuesRow1, total);
         }, 250);
 
         setLoading(false);
@@ -690,10 +733,15 @@ export const PersonalAccountUniverGrid = () => {
         };
     }, [record?.id, safeMonth, safeYear]);
 
+    // Линк назад към списъка
+    const monthName = BG_MONTH_NAMES[safeMonth] || String(safeMonth);
+    const backUrl = `/admin#/personal-accounts-period/${safeYear}/${safeMonth}/`;
+
     return (
         <Box sx={{ width: '100%' }}>
             <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
                 <Typography variant="h6">Подробни данни</Typography>
+                <Button variant="outlined" href={backUrl}>Назад към личните сметки за м.{monthName}</Button>
                 <Button variant="contained" onClick={() => void persistRows(false)} disabled={saving || loading}>
                     {saving ? 'Запис...' : 'Запиши'}
                 </Button>

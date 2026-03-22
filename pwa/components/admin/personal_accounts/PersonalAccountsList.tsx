@@ -61,17 +61,35 @@ const normalizeEmployeeId = (value: unknown): string => {
 const PersonalAccountsMonthList = ({ year, month }: { year: number; month: number }) => {
     const dataProvider = useDataProvider();
     const [scheduleOrderByName, setScheduleOrderByName] = useState<Map<string, number>>(new Map());
+    const [pjmPositionIri, setPjmPositionIri] = useState<string>('');
 
     useEffect(() => {
         let isMounted = true;
 
+
         const loadScheduleOrder = async () => {
             try {
+                // 1. Вземаме позицията по име
+                const { data: positions } = await dataProvider.getList('positions', {
+                    filter: { name: 'Машинист ПЖМ' },
+                    pagination: { page: 1, perPage: 1 },
+                });
+
+                const pjmPosition = positions?.[0];
+                const positionId = pjmPosition ? (pjmPosition.id ?? pjmPosition['@id']) : null;
+                if (pjmPosition && isMounted) {
+                    const positionId = pjmPosition.id ?? pjmPosition['@id'];
+
+                    // Сетваме стейта за бъдеща употреба в UI
+                    setPjmPositionIri(positionId);
+                }
                 const { data: members } = await dataProvider.getList('monthly_schedules', {
-                    filter: { year, month },
+                    filter: { year, month, position: positionId },
                     sort: { field: 'id', order: 'DESC' },
                     pagination: { page: 1, perPage: 100 },
                 });
+
+                console.log('Loaded monthly schedules for order resolution:', members);
 
                 const scheduleCandidates = members
                     .map((item: any) => item?.id ?? item?.['@id'])
@@ -186,6 +204,7 @@ const PersonalAccountsMonthList = ({ year, month }: { year: number; month: numbe
                         label="№"
                         render={(record: any) => {
                             const key = normalizeEmployeeName(record?.employee_name);
+                            //console.log('Employee:', record?.employee_name, 'Normalized key:', key, 'Order map:', scheduleOrderByName);
                             const orderByName = scheduleOrderByName.get(key);
                             return orderByName ?? '-';
                         }}
