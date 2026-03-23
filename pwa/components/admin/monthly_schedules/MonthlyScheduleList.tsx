@@ -24,7 +24,7 @@ export const MonthlyScheduleList = () => (
                 render={(record: any) => getMonthName(record.month)} 
             />
             <NumberField source="year" label="Година" />
-            <ReferenceField source="position" reference="positions" label="Длъжност">
+            <ReferenceField source="position" reference="positions" label="Длъжност" link={false}>
                 <TextField source="name" />
             </ReferenceField>
             <TextField source="status" label="Статус" />

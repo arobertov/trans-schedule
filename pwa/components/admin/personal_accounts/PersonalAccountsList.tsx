@@ -198,13 +198,12 @@ const PersonalAccountsMonthList = ({ year, month }: { year: number; month: numbe
                 </Button>
             </Box>
 
-            <List resource="personal_accounts" filter={{ year, month }} sort={{ field: 'employee_name', order: 'ASC' }} perPage={100} actions={false}>
+            <List resource="personal_accounts" filter={{ year, month }} sort={{ field: 'employee_name', order: 'ASC' }} pagination={false} perPage={1000} actions={false}>
                 <Datagrid bulkActionButtons={false} rowClick={false}>
                     <FunctionField
                         label="№"
                         render={(record: any) => {
                             const key = normalizeEmployeeName(record?.employee_name);
-                            //console.log('Employee:', record?.employee_name, 'Normalized key:', key, 'Order map:', scheduleOrderByName);
                             const orderByName = scheduleOrderByName.get(key);
                             return orderByName ?? '-';
                         }}

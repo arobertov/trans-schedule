@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useDataProvider, useNotify, useRecordContext } from 'react-admin';
+import { useDataProvider, useNotify, useRecordContext, useRefresh } from 'react-admin';
 import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, List, ListItem, ListItemText, ListItemSecondaryAction, GlobalStyles, FormControlLabel, Switch } from '@mui/material';
 import { Fullscreen, FullscreenExit, Delete as DeleteIcon, PersonAdd } from '@mui/icons-material';
 import "@univerjs/design/lib/index.css";
@@ -18,6 +18,7 @@ import { UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
 import { UniverSheetsFormulaUIPlugin } from '@univerjs/sheets-formula-ui';
 import { UniverSheetsUIPlugin } from '@univerjs/sheets-ui';
 import { UniverUIPlugin } from '@univerjs/ui';
+import { getToken } from "../../../jwt-frontend-auth/src/auth/authService";
 
 import UniverDesignEnUS from "@univerjs/design/locale/en-US";
 import UniverDocsUIEnUS from "@univerjs/docs-ui/locale/en-US";
@@ -2601,12 +2602,7 @@ export const UniverScheduleGrid = () => {
             };
             mergeData.push({ startRow: 0, endRow: 0, startColumn: 0, endColumn: 40 });
 
-            // Row 1: Approved By
-            sheetData[1] = { 
-                [totalCols - 5]: { v: "Утвърдил: ............................", s: SCHEDULE_TEMPLATE.subTitle }
-            };
-            mergeData.push({ startRow: 1, endRow: 1, startColumn: 35, endColumn: 40 });
-
+            
             if (isMatrixMode) {
                 // Row 2: "Add row matrix" (Left)
                 sheetData[2] = {
@@ -2802,10 +2798,7 @@ export const UniverScheduleGrid = () => {
 
             // --- FOOTER ---
             const footerRowStart = employees.length + GRID_ROW_OFFSET + 2;
-            sheetData[footerRowStart] = {
-                0: { v: "Изготвил: ............................", s: SCHEDULE_TEMPLATE.footerLabel },
-                [totalCols - 5]: { v: "Съгласувал: ............................", s: SCHEDULE_TEMPLATE.footerLabel }
-            };
+            
             mergeData.push({ startRow: footerRowStart, endRow: footerRowStart, startColumn: totalCols - 5, endColumn: totalCols - 1 });
             mergeData.push({ startRow: footerRowStart, endRow: footerRowStart, startColumn: 0, endColumn: 2 });
 
@@ -3487,6 +3480,57 @@ export const UniverScheduleGrid = () => {
         }, 120);
     };
 
+    const RecalculatePersonalAccountsButton = () => {
+        const record = useRecordContext<any>();
+        const notify = useNotify();
+        const refresh = useRefresh();
+    
+        const resolveScheduleId = (value: unknown): string => {
+            const raw = String(value ?? '').trim();
+            if (!raw) return '';
+    
+            // React-admin can hydrate id as IRI (e.g. /monthly_schedules/1).
+            const iriMatch = raw.match(/\/monthly_schedules\/([^/]+)$/);
+            if (iriMatch?.[1]) {
+                return iriMatch[1];
+            }
+    
+            return raw.replace(/^\/+|\/+$/g, '');
+        };
+    
+        const recalculate = async () => {
+            const scheduleId = resolveScheduleId(record?.id);
+            if (!scheduleId) return;
+    
+            try {
+                const token = getToken();
+                const response = await fetch(`${window.origin}/monthly_schedules/${encodeURIComponent(scheduleId)}/personal_accounts/recalculate`, {
+                    method: 'POST',
+                    headers: {
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                        'Content-Type': 'application/json',
+                    },
+                });
+    
+                if (!response.ok) {
+                    throw new Error('Неуспешна рекалкулация на личните сметки.');
+                }
+    
+                const payload = await response.json();
+                notify(`Преизчислени лични сметки: ${payload?.processed_accounts ?? 0}`, { type: 'success' });
+                refresh();
+            } catch (error: any) {
+                notify(error?.message || 'Грешка при преизчисляване на личните сметки.', { type: 'error' });
+            }
+        };
+    
+        return (
+            <Button variant="outlined" onClick={recalculate}>
+                Преизчисли лични сметки
+            </Button>
+        );
+    };
+
     return (
         <>
             <GlobalStyles
@@ -3527,7 +3571,7 @@ export const UniverScheduleGrid = () => {
             )}
             <Box 
                 mt={0}
-                height={isFullscreen ? "calc(100vh - 140px)" : "calc(100vh - 100px)"} 
+                height={isFullscreen ? "calc(100vh - 14px)" : "calc(100vh - 100px)"} 
                 width="100%" 
                 display="flex" 
                 flexDirection="column"
@@ -3631,14 +3675,16 @@ export const UniverScheduleGrid = () => {
                             />
                         </Box>
 
-                        <Button
+                        <RecalculatePersonalAccountsButton />
+
+                        {/*<Button
                             size="small"
                             variant="text"
                             onClick={() => setMatrixValidationColors(MATRIX_COLOR_DEFAULTS)}
                             sx={{ minWidth: 'auto', px: 1 }}
                         >
                             Възстанови
-                        </Button>
+                        </Button>*/}
                     </>
                 )}
 
