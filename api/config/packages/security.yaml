@@ -35,6 +35,13 @@ security:
         - { path: ^/contexts, roles: PUBLIC_ACCESS } # Allows accessing the Swagger UI contexts
         - { path: ^/auth, roles: PUBLIC_ACCESS }
         - { path: ^/admin, roles: PUBLIC_ACCESS }
+
+    role_hierarchy:
+        ROLE_SUPER_ADMIN: [ROLE_ADMIN, ROLE_OPERATOR, ROLE_CONTROL, ROLE_LIMITED, ROLE_USER]   
+        ROLE_ADMIN:  [ROLE_OPERATOR, ROLE_CONTROL, ROLE_LIMITED, ROLE_USER]
+        ROLE_OPERATOR: [ROLE_CONTROL, ROLE_LIMITED, ROLE_USER]
+        ROLE_CONTROL: [ROLE_LIMITED, ROLE_USER]
+        ROLE_LIMITED: [ROLE_USER]
 when@test:
     security:
         password_hashers:
@@ -47,3 +54,4 @@ when@test:
                 cost: 4 # Lowest possible value for bcrypt
                 time_cost: 3 # Lowest possible value for argon
                 memory_cost: 10 # Lowest possible value for argon
+        

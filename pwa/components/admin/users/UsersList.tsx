@@ -24,6 +24,8 @@ export const UsersList = () => {
     <List actions={<UsersListActions />} title="Потребители">
       <Datagrid>
         <TextField source="username" label="Потребителско име" />
+        <TextField source="firstName" label="Име"/>
+        <TextField source="lastName" label="Фамилия"/>
         <FunctionField 
                 source="roles"
                 label="Роля"

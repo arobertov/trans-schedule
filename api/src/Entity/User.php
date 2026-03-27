@@ -52,12 +52,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column]
     private ?int $id = null;
 
-    #[Assert\NotBlank]
+    #[Assert\NotBlank(message: 'Потребителското име е задължително')]
     #[Groups(['user:read', 'user:create', 'user:update'])]
     #[ORM\Column(length: 180)]
     private ?string $username = null;
 
-    #[Assert\NotBlank]
+    #[Assert\NotBlank(message: 'Първото име е задължително')]
     #[Groups(['user:read', 'user:create', 'user:update'])]
     #[ORM\Column(length: 180)]
     private ?string $firstName  = null;

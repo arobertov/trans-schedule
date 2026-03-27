@@ -32,6 +32,16 @@ export const UsersCreate = () => {
           helperText="Минимум 3 символа"
           fullWidth
         />
+        <TextInput
+          source="firstName"
+          label="Име"
+          fullWidth
+        />
+        <TextInput
+          source="lastName"
+          label="Фамилия"
+          fullWidth
+        />
         <PasswordInput 
           source="plainPassword" 
           label="Парола" 
@@ -39,6 +49,7 @@ export const UsersCreate = () => {
           helperText="Минимум 6 символа"
           fullWidth
         />
+
       </SimpleForm>
     </Create>
   );

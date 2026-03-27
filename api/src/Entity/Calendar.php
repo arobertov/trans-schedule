@@ -24,11 +24,11 @@ use App\Repository\CalendarRepository;
     normalizationContext: ['groups' => ['calendar:read']],
     denormalizationContext: ['groups' => ['calendar:write']],
     operations: [
-        new GetCollection(),
-        new Get(),
-        new Post(processor: CalendarStateProcessor::class),
-        new Put(processor: CalendarStateProcessor::class),
-        new Delete()
+        new GetCollection(security: "is_granted('ROLE_LIMITED')"),
+        new Get(security: "is_granted('ROLE_LIMITED')"),
+        new Post(processor: CalendarStateProcessor::class, security: "is_granted('ROLE_OPERATOR')"),
+        new Put(processor: CalendarStateProcessor::class, security: "is_granted('ROLE_OPERATOR')"),
+        new Delete(security: "is_granted('ROLE_ADMIN')")
     ]
 )]
 #[ApiFilter(SearchFilter::class, properties: ['year' => 'exact'])]

@@ -5,16 +5,19 @@
 const ROLE_HIERARCHY = [
     'ROLE_SUPER_ADMIN', 
     'ROLE_ADMIN',
-    'ROLE_MANAGER',
+    'ROLE_OPERATOR',
+    'ROLE_CONTROL',
+    'ROLE_LIMITED',
     'ROLE_USER'         
 ];
 
 const ROLE_TRANSLATIONS = {
     'ROLE_SUPER_ADMIN': 'Супер Администратор',
     'ROLE_ADMIN': 'Администратор',
-    'ROLE_MANAGER': 'Мениджър',
-    'ROLE_USER': 'Оператор',
-    'default': 'Потребител' 
+    'ROLE_OPERATOR':'Оператор',
+    'ROLE_CONTROL':'Мениджмънт',
+    'ROLE_LIMITED':'Ограничен',
+    'ROLE_USER':'Потребител' 
 };
 
 /**

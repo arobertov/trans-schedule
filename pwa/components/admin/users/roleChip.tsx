@@ -5,6 +5,7 @@ import React, { CSSProperties } from 'react';
 const styleMap: {
     base: CSSProperties;
     admin: CSSProperties;
+    operator: CSSProperties,
     user: CSSProperties;
 } = {
     // Стилове за всички чипове
@@ -20,11 +21,15 @@ const styleMap: {
     },
     // Цветови схеми
     admin: {
-        backgroundColor: '#68B301', // Зелено/Лайм (за Админ)
+        backgroundColor: '#21a1ae', // Зелено/Лайм (за Админ)
+        boxShadow: '0 2px 5px rgba(124, 255, 2, 0.21)',
+    },
+    operator: {
+        backgroundColor: '#ffc400', 
         boxShadow: '0 2px 5px rgba(0, 0, 0, 0.2)',
     },
     user: {
-        backgroundColor: '#007BFF', // Синьо (за Оператор)
+        backgroundColor: '#007BFF', 
         boxShadow: '0 2px 5px rgba(0, 0, 0, 0.2)',
     },
     // Може да добавите още цветове тук
@@ -42,7 +47,7 @@ interface RoleChipProps {
  */
 const RoleChip: React.FC<RoleChipProps> = ({ roleText, roleType }: RoleChipProps) => {
     // Избиране на стил въз основа на типа
-    const chipStyle = roleType === 'admin' ? styleMap.admin : styleMap.user;
+    const chipStyle = roleType === 'super_admin'&&'admin' ? styleMap.admin : roleType === 'operator' ? styleMap.operator: styleMap.user;
     
     // Комбиниране на базовия и специфичния стил
     const combinedStyle = { ...styleMap.base, ...chipStyle };
