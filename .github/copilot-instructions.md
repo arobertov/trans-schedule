@@ -235,9 +235,9 @@ DATABASE_URL: mysql://api-platform:123456@database:3306/api?serverVersion=8.0
 - ✅ Clear cache after config changes: `docker compose exec -T php php bin/console cache:clear`
 
 ## Connect to the API
-- Base URL: `http://localhost` (same-origin with PWA)
-- API Docs: `http://localhost/docs` (Swagger UI)
-- Admin: `http://localhost/admin` (API Platform Admin)
+- Base URL: `NEXT_PUBLIC_ENTRYPOINT` (configured in environment, for example `http://php` in Docker)
+- API Docs: `NEXT_PUBLIC_ENTRYPOINT/docs` (Swagger UI)
+- Admin: `NEXT_PUBLIC_ENTRYPOINT/admin` (API Platform Admin)
 
 ## Install dependencies
 - Backend: `docker compose exec php composer install`

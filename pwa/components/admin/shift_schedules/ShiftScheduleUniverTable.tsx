@@ -13,7 +13,6 @@ import "@univerjs/sheets-formula-ui/lib/index.css";
 import {
     ICommandService,
     IUniverInstanceService,
-    LocaleType,
     LogLevel,
     Univer,
     UniverInstanceType,
@@ -28,13 +27,8 @@ import { UniverSheetsFormulaPlugin } from "@univerjs/sheets-formula";
 import { UniverSheetsFormulaUIPlugin } from "@univerjs/sheets-formula-ui";
 import { UniverSheetsUIPlugin } from "@univerjs/sheets-ui";
 import { UniverUIPlugin } from "@univerjs/ui";
-import UniverDesignEnUS from "@univerjs/design/locale/en-US";
-import UniverDocsUIEnUS from "@univerjs/docs-ui/locale/en-US";
-import UniverSheetsFormulaUIEnUS from "@univerjs/sheets-formula-ui/locale/en-US";
-import UniverSheetsUIEnUS from "@univerjs/sheets-ui/locale/en-US";
-import UniverUIEnUS from "@univerjs/ui/locale/en-US";
 import api from "../../../jwt-frontend-auth/src/api/apiClient";
-import { BulgarianLanguage } from "../../../locales/univer/index";
+import { BG_LOCALE, BulgarianLanguage } from "../../../locales/univer/index";
 
 type ShiftScheduleRecord = {
     id?: number | string;
@@ -635,7 +629,7 @@ const buildWorkbookConfig = (schedule: { name: string; description: string }, sh
                     columnData,
                 },
             },
-            locale: LocaleType.EN_US,
+            locale: BG_LOCALE,
             styles: {},
         },
         mergeData,
@@ -1078,20 +1072,11 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
 
         const univer = new Univer({
             theme: defaultTheme,
-            locale: LocaleType.BG_BG,
+            locale: BG_LOCALE,
             locales: BulgarianLanguage,
-            //locale: LocaleType.EN_US,
-            //locales: {
-            //    [LocaleType.EN_US]: {
-            //        ...UniverDesignEnUS,
-            //        ...UniverDocsUIEnUS,
-            //        ...UniverSheetsUIEnUS,
-            //        ...UniverSheetsFormulaUIEnUS,
-            //        ...UniverUIEnUS,
-            //    },
-            //},
             logLevel: LogLevel.ERROR,
         });
+
 
         univer.registerPlugin(UniverRenderEnginePlugin);
         univer.registerPlugin(UniverFormulaEnginePlugin);
