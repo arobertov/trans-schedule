@@ -152,6 +152,16 @@ Use services in State Processors or custom Controllers for non-CRUD operations.
 - **Frontend**: Token stored in localStorage via `pwa/jwt-frontend-auth/src/auth/authService.ts`
 - **Admin**: API Platform Admin (`pwa/components/admin/`) uses custom `authProvider.ts`
 
+### Frontend API Path Rule (Important)
+When using `api` client calls from resource-scoped admin forms (for example users edit/create flows), avoid adding the resource prefix if the request is already executed in a resource context.
+
+- ✅ Correct pattern with id only: `await api.patch(`${data.id}`, payload)`
+- ❌ Avoid prefixed duplicate path: `await api.patch(`/users/${data.id}`, payload)`
+
+Reason: in these contexts, API Platform already resolves the resource IRI base (for example `/users`) from the active resource route. Appending another `/users/` manually duplicates the IRI path and can produce URLs like `/users//users/{id}`.
+
+IRI note: in API Platform the canonical identifier for a concrete record is its IRI (for example `/users/123`). In resource-scoped admin requests, pass only the trailing identifier segment (`${data.id}`), because the resource prefix is already part of the active request context.
+
 Security config in `api/config/packages/security.yaml`:
 - `/auth`, `/docs`, `/admin` are `PUBLIC_ACCESS`
 - All other routes require JWT authentication

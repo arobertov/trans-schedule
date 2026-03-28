@@ -33,24 +33,24 @@ class PatternColumn
     #[ORM\Column(type: 'integer')]
     #[Assert\GreaterThan(value: 0, message: 'Номерът на колоната трябва да е положително число')]
     #[ApiProperty(description: 'Пореден номер на колоната', example: 1)]
-    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])] // ДОБАВЕНО pattern:write
+    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])] 
     private ?int $column_number = null;
 
     #[ORM\Column(length: 100)]
     #[Assert\NotBlank(message: 'Наименованието на колоната е задължително')]
     #[ApiProperty(description: 'Наименование на колоната', example: 'делничен_ден')]
-    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])] // ДОБАВЕНО pattern:write
+    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])] 
     private ?string $column_name = null;
 
     #[ORM\Column(length: 50)]
     #[Assert\NotBlank(message: 'Обозначението е задължително')]
     #[ApiProperty(description: 'Кратко обозначение (напр: Пн, ПД, ДП)', example: 'Пн')]
-    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])] // ДОБАВЕНО pattern:write
+    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])]
     private ?string $label = null;
 
     #[ORM\Column(type: 'text', nullable: true)]
     #[ApiProperty(description: 'Описание на колоната')]
-    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])] // ДОБАВЕНО pattern:write
+    #[Groups(['pattern_column:read', 'pattern_column:write', 'pattern:read', 'pattern:write'])] 
     private ?string $description = null;
 
     #[ORM\Column(type: 'datetime', options: ['default' => 'CURRENT_TIMESTAMP'])]

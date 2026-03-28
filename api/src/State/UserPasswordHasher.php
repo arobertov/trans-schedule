@@ -30,14 +30,19 @@ final readonly class UserPasswordHasher implements ProcessorInterface
      */
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): User
     {
-        // Check if roles are being modified (only ROLE_SUPER_ADMIN can do this)
+        if ($operation->getName() === 'user_register') {
+            // Public registration always creates a basic user role.
+            $data->setRoles(['ROLE_USER']);
+        }
+
+        // Check if roles are being modified (ROLE_ADMIN and ROLE_SUPER_ADMIN can do this)
         if ($operation instanceof \ApiPlatform\Metadata\Patch || $operation instanceof \ApiPlatform\Metadata\Put) {
             $userId = $uriVariables['id'] ?? $data->getId();
             $existingUser = $this->userRepository->find($userId);
             
             if ($existingUser && $data->getRoles() !== $existingUser->getRoles()) {
-                if (!$this->security->isGranted('ROLE_SUPER_ADMIN')) {
-                    throw new AccessDeniedHttpException('Само ROLE_SUPER_ADMIN може да променя ролите на потребителите');
+                if (!$this->security->isGranted('ROLE_SUPER_ADMIN') && !$this->security->isGranted('ROLE_ADMIN')) {
+                    throw new AccessDeniedHttpException('Само ROLE_ADMIN и ROLE_SUPER_ADMIN могат да променят ролите на потребителите');
                 }
             }
         }

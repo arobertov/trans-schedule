@@ -28,7 +28,9 @@ security:
     # Note: Only the *first* access control that matches will be used
     access_control:
         - { path: ^/user, roles: PUBLIC_ACCESS }
-        - { path: ^/users, roles: PUBLIC_ACCESS, methods: [POST] } # Allow registration
+        - { path: ^/registration-setting, roles: PUBLIC_ACCESS, methods: [GET] }
+        - { path: ^/registration-setting, roles: IS_AUTHENTICATED_FULLY, methods: [PUT] }
+        - { path: ^/register, roles: PUBLIC_ACCESS, methods: [POST] } # Allow public self-registration
         - { path: ^/users, roles: IS_AUTHENTICATED_FULLY } # Require authentication for GET/PATCH/DELETE users
         - { path: ^/$, roles: PUBLIC_ACCESS } # Allows accessing the Swagger UI
         - { path: ^/docs, roles: PUBLIC_ACCESS } # Allows accessing the Swagger UI docs

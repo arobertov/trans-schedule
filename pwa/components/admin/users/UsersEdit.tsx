@@ -4,6 +4,7 @@ import {
   SimpleForm,
   TextInput,
   PasswordInput,
+  SelectArrayInput,
   required,
   minLength,
   useNotify,
@@ -14,8 +15,17 @@ import {
   SaveButton,
 } from "react-admin";
 import api from "../../../jwt-frontend-auth/src/api/apiClient";
+import { ROLES } from "../../../helpers/RoleMaper";
 
 const validateUsername = [required("Потребителското име е задължително"), minLength(3, "Минимум 3 символа")];
+const roleChoices = [
+  { id: ROLES.SUPER_ADMIN, name: "Супер Администратор" },
+  { id: ROLES.ADMIN, name: "Администратор" },
+  { id: ROLES.OPERATOR, name: "Оператор" },
+  { id: ROLES.CONTROL, name: "Мениджмънт" },
+  { id: ROLES.LIMITED, name: "Ограничен" },
+  { id: ROLES.USER, name: "Потребител" },
+];
 const validateOldPassword = (value: any, allValues: any) => {
   // If changing password, old password is required
   if (allValues.plainPassword && !value) {
@@ -46,6 +56,9 @@ export const UsersEdit = () => {
   const handleSave = async (data: any) => {
     try {
       const payload: any = { username: data.username };
+      payload.firstName = data.firstName;
+      payload.lastName = data.lastName;
+      payload.roles = Array.isArray(data.roles) ? data.roles : [];
       
       // If changing password, include password fields
       if (data.plainPassword) {
@@ -82,6 +95,28 @@ export const UsersEdit = () => {
           label="Потребителско име" 
           validate={validateUsername}
           helperText="Минимум 3 символа"
+        />
+
+        <TextInput
+          source="firstName"
+          label="Име"
+          helperText="Собствено име"
+        />
+
+        <TextInput
+          source="lastName"
+          label="Фамилия"
+          helperText="Фамилно име"
+        />
+
+        <SelectArrayInput
+          source="roles"
+          label="Роли"
+          choices={roleChoices}
+          optionText="name"
+          optionValue="id"
+          helperText="Изберете една или повече роли"
+          fullWidth
         />
         
         <PasswordInput 

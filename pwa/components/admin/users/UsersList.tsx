@@ -7,17 +7,81 @@ import {
   DeleteButton,
   CreateButton,
   TopToolbar,
-  usePermissions,
   FunctionField,
+  useNotify,
 } from "react-admin";
-import {getHighestRoleInfo} from "../../../helpers/RoleMaper";
+import { FormControlLabel, Switch, Tooltip } from "@mui/material";
+import { getHighestRoleInfo, ROLES, useCan } from "../../../helpers/RoleMaper";
+import { getRegistrationAllowed, setRegistrationAllowed } from "../../../helpers/registrationSettings";
 import RoleChip from "./roleChip";
 
-const UsersListActions = () => (
-  <TopToolbar>
-    <CreateButton label="Добави потребител" />
-  </TopToolbar>
-);
+const UsersListActions = () => {
+  const can = useCan();
+  const notify = useNotify();
+  const canManageRegistration = can(ROLES.ADMIN);
+  const defaultAllowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION === "true";
+  const [allowRegistration, setAllowRegistrationState] = React.useState<boolean>(defaultAllowRegistration);
+  const [isLoadingToggle, setIsLoadingToggle] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    let active = true;
+
+    if (!canManageRegistration) {
+      return () => {
+        active = false;
+      };
+    }
+
+    setIsLoadingToggle(true);
+    getRegistrationAllowed(defaultAllowRegistration)
+      .then((value) => {
+        if (active) {
+          setAllowRegistrationState(value);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoadingToggle(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [canManageRegistration, defaultAllowRegistration]);
+
+  const onToggleRegistration = async (_event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
+    const previousValue = allowRegistration;
+    setAllowRegistrationState(checked);
+    setIsLoadingToggle(true);
+
+    try {
+      const savedValue = await setRegistrationAllowed(checked);
+      setAllowRegistrationState(savedValue);
+      notify('Настройката за регистрация е обновена успешно.');
+    } catch {
+      setAllowRegistrationState(previousValue);
+      notify('Неуспешна промяна на настройката за регистрация.', { type: 'error' });
+    } finally {
+      setIsLoadingToggle(false);
+    }
+  };
+
+  return (
+    <TopToolbar>
+      <CreateButton label="Добави потребител" />
+      {canManageRegistration && (
+        <Tooltip title="Включва или изключва линка за регистрация на екрана за вход.">
+          <FormControlLabel
+            label="Позволи регистрация"
+            control={<Switch checked={allowRegistration} onChange={onToggleRegistration} disabled={isLoadingToggle} />}
+            sx={{ ml: 1, mr: 1 }}
+          />
+        </Tooltip>
+      )}
+    </TopToolbar>
+  );
+};
 
 export const UsersList = () => {
   return (

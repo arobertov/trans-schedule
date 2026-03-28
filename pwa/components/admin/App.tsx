@@ -49,6 +49,7 @@ import { TrainDiagramList } from "./train_diagrams/TrainDiagramList";
 import { TrainDiagramCreate } from "./train_diagrams/TrainDiagramCreate";
 import { TrainDiagramShow } from "./train_diagrams/TrainDiagramShow";
 import { PersonalAccountsList, PersonalAccountCreate, PersonalAccountEdit } from "./personal_accounts";
+import CustomLoginPage from "./CustomLoginPage";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -279,8 +280,7 @@ const normalizeShiftScheduleDetailsPayload = (data: any) => {
 };
 
 const App = () => {
-  console.log('App rendering, hasToken:', !!getToken());
-
+ 
   // Create dataProvider with authenticated fetch
   const baseDataProvider = hydraDataProvider({
     entrypoint: window.origin,
@@ -321,6 +321,8 @@ const App = () => {
       layout={CustomLayout}
       i18nProvider={i18nProvider}
       theme={theme}
+      loginPage={CustomLoginPage}
+      requireAuth
     >
       <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} edit={EmployeesEdit} show={EmployeesShow} />
       <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />

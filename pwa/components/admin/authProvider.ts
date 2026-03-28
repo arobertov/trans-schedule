@@ -1,6 +1,14 @@
 import { AuthProvider } from 'react-admin';
 import { login as jwtLogin, logout, isAuthenticated, getToken } from '../../jwt-frontend-auth/src/auth/authService';
 
+const parseTokenPayload = (token: string) => {
+  try {
+    return JSON.parse(atob(token.split('.')[1]));
+  } catch {
+    return null;
+  }
+};
+
 const authProvider: AuthProvider = {
   login: async ({ username, password }) => {
     try {
@@ -69,7 +77,27 @@ const authProvider: AuthProvider = {
     }
   },
   
-  getPermissions: () => Promise.resolve(),
+  getPermissions: () => {
+    const token = getToken();
+    if (!token) {
+      return Promise.resolve([]);
+    }
+
+    const payload = parseTokenPayload(token);
+    if (!payload) {
+      return Promise.resolve([]);
+    }
+
+    if (Array.isArray(payload.roles)) {
+      return Promise.resolve(payload.roles);
+    }
+
+    if (typeof payload.roles === 'string') {
+      return Promise.resolve([payload.roles]);
+    }
+
+    return Promise.resolve([]);
+  },
 };
 
 export default authProvider;

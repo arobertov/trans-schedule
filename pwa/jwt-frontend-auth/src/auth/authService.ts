@@ -10,10 +10,17 @@ export async function login(username: string, password: string) {
   return token;
 }
 
-export async function register(username: string, password: string) {
-  const res = await api.post('/users', { 
-    username, 
-    plainPassword: password 
+export async function register(
+  username: string,
+  password: string,
+  firstName?: string,
+  lastName?: string
+) {
+  const res = await api.post('/register', {
+    username,
+    firstName: firstName?.trim() || username,
+    lastName: lastName?.trim() || 'Потребител',
+    plainPassword: password,
   });
   return res.data;
 }

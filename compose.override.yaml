@@ -35,6 +35,7 @@ services:
     environment:
       API_PLATFORM_CREATE_CLIENT_ENTRYPOINT: http://php
       API_PLATFORM_CREATE_CLIENT_OUTPUT: .
+      NEXT_PUBLIC_ALLOW_REGISTRATION: ${NEXT_PUBLIC_ALLOW_REGISTRATION:-true}
       # On Linux, you may want to comment the following line for improved performance
       WATCHPACK_POLLING: "false"
 

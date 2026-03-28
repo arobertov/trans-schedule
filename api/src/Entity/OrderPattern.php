@@ -65,7 +65,7 @@ class OrderPattern
 
     #[ORM\OneToMany(targetEntity: PatternColumn::class, mappedBy: 'pattern', cascade: ['persist', 'remove'], orphanRemoval: true)]
     #[ORM\OrderBy(['column_number' => 'ASC'])]
-    #[Groups(['pattern:read', 'pattern:write'])] // ДОБАВЕНО pattern:write
+    #[Groups(['pattern:read', 'pattern:write'])] 
     #[Assert\Valid]
     private Collection $columns;
 

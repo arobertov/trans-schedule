@@ -34,6 +34,7 @@ import UniverSheetsFormulaUIEnUS from "@univerjs/sheets-formula-ui/locale/en-US"
 import UniverSheetsUIEnUS from "@univerjs/sheets-ui/locale/en-US";
 import UniverUIEnUS from "@univerjs/ui/locale/en-US";
 import api from "../../../jwt-frontend-auth/src/api/apiClient";
+import { BulgarianLanguage } from "../../../locales/univer/index";
 
 type ShiftScheduleRecord = {
     id?: number | string;
@@ -1077,16 +1078,18 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
 
         const univer = new Univer({
             theme: defaultTheme,
-            locale: LocaleType.EN_US,
-            locales: {
-                [LocaleType.EN_US]: {
-                    ...UniverDesignEnUS,
-                    ...UniverDocsUIEnUS,
-                    ...UniverSheetsUIEnUS,
-                    ...UniverSheetsFormulaUIEnUS,
-                    ...UniverUIEnUS,
-                },
-            },
+            locale: LocaleType.BG_BG,
+            locales: BulgarianLanguage,
+            //locale: LocaleType.EN_US,
+            //locales: {
+            //    [LocaleType.EN_US]: {
+            //        ...UniverDesignEnUS,
+            //        ...UniverDocsUIEnUS,
+            //        ...UniverSheetsUIEnUS,
+            //        ...UniverSheetsFormulaUIEnUS,
+            //        ...UniverUIEnUS,
+            //    },
+            //},
             logLevel: LogLevel.ERROR,
         });
 

@@ -9,6 +9,9 @@ use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
 use Doctrine\ORM\Mapping as ORM;
 use App\Repository\UserRepository;
 use App\State\UserPasswordHasher;
@@ -25,6 +28,16 @@ use Symfony\Component\Validator\Constraints as Assert;
     operations: [
         new GetCollection(security: "is_granted('ROLE_ADMIN') or is_granted('ROLE_SUPER_ADMIN')"),
         new Post(
+            name: 'user_register',
+            uriTemplate: '/register',
+            processor: UserPasswordHasher::class,
+            validationContext: ['groups' => ['Default', 'user:register']],
+            security: "not is_granted('IS_AUTHENTICATED_FULLY')",
+            denormalizationContext: ['groups' => ['user:register']]
+        ),
+        new Post(
+            name: 'user_create',
+            uriTemplate: '/users',
             processor: UserPasswordHasher::class, 
             validationContext: ['groups' => ['Default', 'user:create']],
             security: "is_granted('ROLE_ADMIN') or is_granted('ROLE_SUPER_ADMIN')"
@@ -41,6 +54,23 @@ use Symfony\Component\Validator\Constraints as Assert;
         new Delete(security: "is_granted('USER_DELETE', object)"),
     ],
 )]
+#[ApiFilter(
+    SearchFilter::class, 
+    properties: [
+        'username' => 'partial',
+        'firstName' => 'partial',
+        'lastName' => 'partial'
+    ]
+)]
+#[ApiFilter(
+    OrderFilter::class, 
+    properties: [
+        'username',
+        'firstName',
+        'lastName'
+    ],
+    arguments: ['orderParameterName' => 'order']
+)]
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\UniqueConstraint(name: 'UNIQ_IDENTIFIER_USERNAME', fields: ['username'])]
 #[UniqueEntity(fields: ['username'], message: 'Потребителското име вече съществува')]
@@ -53,24 +83,24 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     private ?int $id = null;
 
     #[Assert\NotBlank(message: 'Потребителското име е задължително')]
-    #[Groups(['user:read', 'user:create', 'user:update'])]
+    #[Groups(['user:read', 'user:create', 'user:update', 'user:register'])]
     #[ORM\Column(length: 180)]
     private ?string $username = null;
 
     #[Assert\NotBlank(message: 'Първото име е задължително')]
-    #[Groups(['user:read', 'user:create', 'user:update'])]
+    #[Groups(['user:read', 'user:create', 'user:update', 'user:register'])]
     #[ORM\Column(length: 180)]
     private ?string $firstName  = null;
 
-    #[Assert\NotBlank]
-    #[Groups(['user:read', 'user:create', 'user:update'])]
+    #[Assert\NotBlank(message: 'Фамилията е задължителна')]
+    #[Groups(['user:read', 'user:create', 'user:update', 'user:register'])]
     #[ORM\Column(length: 180)]
     private ?string $lastName  = null;
 
     /**
      * @var list<string> The user roles
      */
-    #[Groups(['user:read', 'user:roles'])]
+    #[Groups(['user:read', 'user:roles', 'user:create', 'user:update'])]
     #[ORM\Column]
     private array $roles = [];
 
@@ -80,8 +110,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column]
     private ?string $password = null;
 
-    #[Assert\NotBlank(groups: ['user:create'])]
-    #[Groups(['user:create', 'user:update'])]
+    #[Assert\NotBlank(groups: ['user:create', 'user:register'])]
+    #[Groups(['user:create', 'user:update', 'user:register'])]
     private ?string $plainPassword = null;
 
     #[Groups(['user:update'])]

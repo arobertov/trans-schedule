@@ -7,23 +7,19 @@ import WorkIcon from '@mui/icons-material/Work';
 import PersonIcon from '@mui/icons-material/Person';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import ViewWeekIcon from '@mui/icons-material/ViewWeek';
-import ListAltIcon from '@mui/icons-material/ListAlt';
 import { Collapse, List } from '@mui/material';
-import ExpandLess from '@mui/icons-material/ExpandLess';
-import ExpandMore from '@mui/icons-material/ExpandMore';
 import CalendarViewMonthIcon from '@mui/icons-material/CalendarViewMonth';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import TrainIcon from '@mui/icons-material/Train';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import { useCan, ROLES } from '../../helpers/RoleMaper';
 
 export const CustomMenu = () => {
   const [employeesOpen, setEmployeesOpen] = React.useState(false);
   const [shiftsOpen, setShiftsOpen] = React.useState(false);
   const [open] = useSidebarState();
-  const resources = useResourceDefinitions();
-  const [orderDetailsOpen, setOrderDetailsOpen] = React.useState(false);
 
   const handleEmployeesClick = () => {
     setEmployeesOpen(!employeesOpen);
@@ -33,12 +29,12 @@ export const CustomMenu = () => {
     setShiftsOpen(!shiftsOpen);
   };
 
-  const handleOrderDetailsClick = () => {
-    setOrderDetailsOpen(!orderDetailsOpen);
-  }
+  const can = useCan();
 
   return (
-    <Menu>
+    <Menu
+      hidden={!can(ROLES.LIMITED)}
+    >
       <MenuItemLink
         to="/"
         primaryText="Табло за управление"
@@ -50,9 +46,8 @@ export const CustomMenu = () => {
         primaryText="Служители"
         leftIcon={<PeopleIcon />}
         onClick={handleEmployeesClick}
-        
       />
-      
+
       <Collapse in={employeesOpen && open} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
           <MenuItemLink
@@ -68,16 +63,17 @@ export const CustomMenu = () => {
         to="/users"
         primaryText="Потребители"
         leftIcon={<PersonIcon />}
+        hidden={!can(ROLES.ADMIN)}
       />
-      
+
       <MenuItemLink
         to="/shift_schedules"
         primaryText="График на смените"
         leftIcon={<ScheduleIcon />}
         onClick={handleShiftsClick}
-        
+
       />
-      
+
       <Collapse in={shiftsOpen && open} timeout="auto" unmountOnExit>
         <List component="div" disablePadding>
           <MenuItemLink
