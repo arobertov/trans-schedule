@@ -30,6 +30,9 @@ final readonly class UserPasswordHasher implements ProcessorInterface
      */
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): User
     {
+        $isAdminOrSuperAdmin = $this->security->isGranted('ROLE_SUPER_ADMIN') || $this->security->isGranted('ROLE_ADMIN');
+        $existingUser = null;
+
         if ($operation->getName() === 'user_register') {
             // Public registration always creates a basic user role.
             $data->setRoles(['ROLE_USER']);
@@ -39,9 +42,13 @@ final readonly class UserPasswordHasher implements ProcessorInterface
         if ($operation instanceof \ApiPlatform\Metadata\Patch || $operation instanceof \ApiPlatform\Metadata\Put) {
             $userId = $uriVariables['id'] ?? $data->getId();
             $existingUser = $this->userRepository->find($userId);
+
+            if ($existingUser && $data->getUsername() !== $existingUser->getUsername() && !$isAdminOrSuperAdmin) {
+                throw new AccessDeniedHttpException('Само ROLE_ADMIN и ROLE_SUPER_ADMIN могат да променят потребителското име');
+            }
             
             if ($existingUser && $data->getRoles() !== $existingUser->getRoles()) {
-                if (!$this->security->isGranted('ROLE_SUPER_ADMIN') && !$this->security->isGranted('ROLE_ADMIN')) {
+                if (!$isAdminOrSuperAdmin) {
                     throw new AccessDeniedHttpException('Само ROLE_ADMIN и ROLE_SUPER_ADMIN могат да променят ролите на потребителите');
                 }
             }
@@ -62,7 +69,9 @@ final readonly class UserPasswordHasher implements ProcessorInterface
             }
             
             // Get the existing user from database to verify old password
-            $existingUser = $this->userRepository->find($userId);
+            if (!$existingUser) {
+                $existingUser = $this->userRepository->find($userId);
+            }
             
             if (!$existingUser) {
                 throw new \Symfony\Component\HttpKernel\Exception\BadRequestHttpException('Потребителят не е намерен');

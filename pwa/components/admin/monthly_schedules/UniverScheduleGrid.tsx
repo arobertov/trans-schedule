@@ -1,30 +1,31 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useDataProvider, useNotify, useRecordContext, useRefresh } from 'react-admin';
-import { Box, Button, TextField, Typography, Select, MenuItem, InputLabel, FormControl, CircularProgress, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Autocomplete, List, ListItem, ListItemText, ListItemSecondaryAction, GlobalStyles, FormControlLabel, Switch } from '@mui/material';
-import { Fullscreen, FullscreenExit, Delete as DeleteIcon, PersonAdd } from '@mui/icons-material';
+import { useDataProvider, useNotify, useRecordContext } from 'react-admin';
+import { Box, Typography, CircularProgress, GlobalStyles } from '@mui/material';
 import "@univerjs/design/lib/index.css";
 import "@univerjs/ui/lib/index.css";
 import "@univerjs/sheets-ui/lib/index.css";
 import "@univerjs/docs-ui/lib/index.css";
 import "@univerjs/sheets-formula-ui/lib/index.css";
-import { Univer, LocaleType, UniverInstanceType, ICommandService, IUniverInstanceService, merge } from '@univerjs/core';
+import { Univer, UniverInstanceType } from '@univerjs/core';
+import { FUniver } from '@univerjs/core/facade';
+import '@univerjs/sheets/facade';
+import '@univerjs/sheets-ui/facade';
+import '@univerjs/ui/facade';
+import '@univerjs/docs-ui/facade';
+import '@univerjs/engine-formula/facade';
+import '@univerjs/sheets-formula/facade';
 import { defaultTheme } from '@univerjs/design';
 import { UniverDocsPlugin } from '@univerjs/docs';
 import { UniverDocsUIPlugin } from '@univerjs/docs-ui';
 import { UniverRenderEnginePlugin } from '@univerjs/engine-render';
 import { UniverFormulaEnginePlugin } from '@univerjs/engine-formula';
-import { UniverSheetsPlugin, SetRangeValuesCommand } from '@univerjs/sheets';
+import { UniverSheetsPlugin } from '@univerjs/sheets';
 import { UniverSheetsFormulaPlugin } from '@univerjs/sheets-formula';
 import { UniverSheetsFormulaUIPlugin } from '@univerjs/sheets-formula-ui';
 import { UniverSheetsUIPlugin } from '@univerjs/sheets-ui';
 import { UniverUIPlugin } from '@univerjs/ui';
 import { getToken } from "../../../jwt-frontend-auth/src/auth/authService";
-
-import UniverDesignEnUS from "@univerjs/design/locale/en-US";
-import UniverDocsUIEnUS from "@univerjs/docs-ui/locale/en-US";
-import UniverSheetsFormulaUIEnUS from "@univerjs/sheets-formula-ui/locale/en-US";
-import UniverSheetsUIEnUS from "@univerjs/sheets-ui/locale/en-US";
-import UniverUIEnUS from "@univerjs/ui/locale/en-US";
+import { BG_LOCALE, BulgarianLanguage } from '../../../locales/univer';
 import {
     buildMonthWindow,
     cleanupMonthlyScheduleCacheWindow,
@@ -48,402 +49,46 @@ import {
     stableStringify,
     toBalanceByEmployeeMap,
 } from '../../../helpers/monthlyScheduleGridUtils';
-
-const SCHEDULE_TEMPLATE = {
-    header: {
-        bg: { rgb: '#f0f0f0' },
-        ht: 2, 
-        vt: 2, 
-        tb: 3,
-        ff: 'Sofia Sans',
-        bd: { 
-            t: { style: 1, color: { rgb: '#ccc' } }, 
-            b: { style: 1, color: { rgb: '#ccc' } }, 
-            l: { style: 1, color: { rgb: '#ccc' } }, 
-            r: { style: 1, color: { rgb: '#ccc' } } 
-        },
-        fw: 1, 
-    },
-    summaryHeader: {
-        bg: { rgb: '#f0f0f0' },
-        ht: 2,
-        vt: 2,
-        tb: 3,
-        fs: 10,
-        ff: 'Sofia Sans',
-        fw: 1,
-        bd: {
-            t: { style: 1, color: { rgb: '#ccc' } },
-            b: { style: 1, color: { rgb: '#ccc' } },
-            l: { style: 1, color: { rgb: '#ccc' } },
-            r: { style: 1, color: { rgb: '#ccc' } }
-        }
-    },
-    employeeName: {
-        vt: 2,
-        fw: 1,
-        ff: 'Sofia Sans',
-        bd: {
-            b: { style: 1, color: { rgb: '#e0e0e0' } },
-            r: { style: 1, color: { rgb: '#e0e0e0' } }
-        }
-    },
-    description: {
-         vt: 2,
-         fs: 10,
-         ff: 'Sofia Sans',
-         bd: {
-             b: { style: 1, color: { rgb: '#e0e0e0' } },
-             r: { style: 1, color: { rgb: '#e0e0e0' } }
-         },
-         cl: { rgb: '#0a0a0a' }
-    },
-    matrixCell: {
-        ht: 2,
-        vt: 2,
-        fs: 9,
-        ff: 'Sofia Sans',
-        bd: {
-            b: { style: 1, color: { rgb: '#f0f0f0' } },
-            r: { style: 1, color: { rgb: '#f0f0f0' } },
-            l: { style: 1, color: { rgb: '#f0f0f0' } }
-        },
-        cl: { rgb: '#888' }
-    },
-    normalCell: {
-        ht: 2, // Center
-        vt: 2,
-        ff: 'Sofia Sans',
-        bd: {
-            b: { style: 1, color: { rgb: '#f0f0f0' } },
-            r: { style: 1, color: { rgb: '#f0f0f0' } }
-        }
-    },
-    weekendCell: {
-        ht: 2,
-        vt: 2,
-        bg: { rgb: '#a7a7a7' },
-        ff: 'Sofia Sans',
-        bd: {
-            b: { style: 1, color: { rgb: '#f0f0f0' } },
-            r: { style: 1, color: { rgb: '#f0f0f0' } }
-        }
-    },
-    // New Left Table Styles
-    leftTableHeader: {
-        bg: { rgb: '#EEECE1' },
-        ht: 2, 
-        vt: 2, 
-        ff: 'Sofia Sans',
-        bd: { 
-            t: { style: 1, color: { rgb: '#000' } }, 
-            b: { style: 1, color: { rgb: '#000' } }, 
-            l: { style: 1, color: { rgb: '#000' } }, 
-            r: { style: 1, color: { rgb: '#000' } } 
-        },
-        fw: 1,
-        tb: 3,
-    },
-    countCellPink: {
-        bg: { rgb: '#ffdbcc' },
-        ht: 2, vt: 2, ff: 'Sofia Sans',
-        bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
-    },
-    countCellGreen: {
-        bg: { rgb: '#09ec09' },
-        ht: 2, vt: 2, ff: 'Sofia Sans',
-        bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
-    },
-    countCellRed: {
-        bg: { rgb: '#aa0a0a' },
-        ht: 2, vt: 2, ff: 'Sofia Sans',
-        bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
-    },
-    matrixInputCell: {
-         ht: 2, vt: 2, ff: 'Sofia Sans',
-         bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
-    },
-        periodInputSingle: {
-            bg: { rgb: '#E8F5E9' },
-            ht: 2, vt: 2, ff: 'Sofia Sans',
-            bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
-        },
-        periodInputDuplicate: {
-            bg: { rgb: '#FFEBEE' },
-            ht: 2, vt: 2, ff: 'Sofia Sans',
-            bd: { b: { style: 1, color: { rgb: '#000' } }, r: { style: 1, color: { rgb: '#000' } } }
-        },
-    // New Document Styles
-    title: {
-        fs: 18,
-        fw: 1,
-        ff: 'Sofia Sans',
-        ht: 2, // Center
-        vt: 2,
-    },
-    subTitle: {
-        fs: 11,
-        ff: 'Sofia Sans',
-        ht: 3, // Right
-        vt: 2,
-        cl: { rgb: '#000' }
-    },
-    legend: {
-        fs: 10,
-        ff: 'Sofia Sans',
-        ht: 1, // Left
-        vt: 2,
-        cl: { rgb: '#666' }
-    },
-    footerLabel: {
-         fs: 11,
-         ff: 'Sofia Sans',
-         vt: 2,
-         ht: 1,
-         pt: 20 
-    }
-};
-
-const GRID_ROW_OFFSET = 5; // Rows reserved for header info (0-4)
-const PJM_POSITION_NAME = 'машинист пжм';
-const MATRIX_COLORS_STORAGE_KEY = 'monthlySchedule.matrixValidationColors';
-const AUTO_SAVE_DEBOUNCE_MS = 900;
-const PREVIOUS_MONTH_CACHE_TTL_MS = 60 * 1000;
-const MONTHLY_SCHEDULE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const MONTHLY_SCHEDULE_CACHE_RADIUS = 2;
-const PREVIOUS_MONTH_BALANCE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const SHIFT_SCHEDULE_MAP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const SCHEDULE_PERF_DEBUG = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_SCHEDULE_PERF_DEBUG === '1';
-const NIGHT_WORK_CORRECTION_FACTOR = 0.143;
-const MATRIX_COLOR_DEFAULTS = {
-    single: '#E8F5E9',
-    duplicate: '#FFEBEE',
-    weekend: '#A7A7A7',
-};
-
-const SUMMARY_HEADERS = [
-    'ИНДИВИДУАЛНА НОРМА',
-    'НОЩЕН ТРУД',
-    'КОРЕКЦИЯ 1.143',
-    '+/- ТЕКУЩ МЕСЕЦ',
-    '+/- МИНАЛ МЕСЕЦ',
-    'ОТРАБОТЕНО ВРЕМЕ',
-    'ОБЩО ЗА ПЕРИОДА',
-];
-
-const SUMMARY_FIELD_KEYS = [
-    'individual_norm',
-    'night_work_total',
-    'night_correction_1143',
-    'current_month_balance',
-    'previous_month_balance',
-    'worked_total',
-    'period_total',
-];
-
-const SUMMARY_HEADER_DISPLAY: Record<string, string> = {
-    'ИНДИВИДУАЛНА НОРМА': 'ИНДИВИД.\n НОРМА',
-    'НОЩЕН ТРУД': 'НОЩЕН\n ТРУД',
-    'КОРЕКЦИЯ 1.143': 'КОРЕКЦИЯ\n 1.143',
-    '+/- ТЕКУЩ МЕСЕЦ': '+/- ТЕКУЩ\n МЕСЕЦ',
-    '+/- МИНАЛ МЕСЕЦ': '+/- МИНАЛ\n МЕСЕЦ',
-    'ОТРАБОТЕНО ВРЕМЕ': 'ОТРАБОТЕНО\n ВРЕМЕ',
-    'ОБЩО ЗА ПЕРИОДА': 'ОБЩО ЗА\n ПЕРИОДА',
-};
-
-const EXEMPTION_CODES = new Set(['О', 'Б', 'М', 'С', 'А', 'У', 'O', 'B', 'M', 'C', 'A', 'U']);
-
-const getShiftCodeColumnWidth = (shiftScheduleName: string) => {
-    const length = String(shiftScheduleName ?? '').trim().length;
-    const estimated = Math.ceil(length * 8) + 1;
-    return Math.max(70, Math.min(estimated, 100));
-};
-
-const getSummaryColumnWidths = (rows: any[]) => {
-    return SUMMARY_FIELD_KEYS.map((fieldKey, index) => {
-        const header = SUMMARY_HEADER_DISPLAY[SUMMARY_HEADERS[index]] || SUMMARY_HEADERS[index];
-        let maxLength = header
-            .split('\n')
-            .reduce((max, part) => Math.max(max, String(part).trim().length), 0);
-
-        (rows || []).forEach((row: any) => {
-            const valueLength = String(row?.[fieldKey] ?? '').trim().length;
-            if (valueLength > maxLength) maxLength = valueLength;
-        });
-
-        const estimated = Math.ceil(maxLength * 8) + 10;
-        return Math.max(68, Math.min(estimated, 90));
-    });
-};
-
-const getScheduleRefValue = (value: any): string => {
-    if (!value) return '';
-    if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (!trimmed) return '';
-        return trimmed.startsWith('/shift_schedules/') ? trimmed : `/shift_schedules/${trimmed}`;
-    }
-    if (typeof value === 'number') return `/shift_schedules/${value}`;
-    if (typeof value === 'object') {
-        if (value['@id']) return String(value['@id']);
-        if (value.id) return `/shift_schedules/${value.id}`;
-    }
-    return '';
-};
-
-const buildScheduleVersionSignature = (value: any): string => {
-    if (!value || typeof value !== 'object') return '';
-
-    const status = String(value?.status ?? '');
-    const linkPreviousMonthBalance = value?.link_previous_month_balance ? '1' : '0';
-    const weekdayShiftSchedule = getScheduleRefValue(value?.weekday_shift_schedule);
-    const holidayShiftSchedule = getScheduleRefValue(value?.holiday_shift_schedule);
-    const workingDays = String(value?.working_days ?? '');
-    const workingHours = String(value?.working_hours ?? '');
-    const rowsJson = stableStringify(Array.isArray(value?.schedule_rows) ? value.schedule_rows : []);
-
-    return [
-        status,
-        linkPreviousMonthBalance,
-        weekdayShiftSchedule,
-        holidayShiftSchedule,
-        workingDays,
-        workingHours,
-        rowsJson,
-    ].join('|');
-};
-
-const getSheetLayout = (isMatrixMode: boolean, daysInMonth: number) => {
-    const firstDayCol = isMatrixMode ? 8 : 3;
-    const lastDayCol = firstDayCol + daysInMonth - 1;
-    const duplicateNoCol = lastDayCol + 1;
-    const spacerAfterNoCol = duplicateNoCol + 1;
-    const summaryStartCol = spacerAfterNoCol + 1;
-    const summaryEndCol = summaryStartCol + SUMMARY_HEADERS.length - 1;
-    const spacerAfterSummary = summaryEndCol + 1;
-    const workedHoursStartCol = spacerAfterSummary + 1;
-    const workedHoursEndCol = workedHoursStartCol + daysInMonth - 1;
-
-    return {
-        firstDayCol,
-        lastDayCol,
-        duplicateNoCol,
-        spacerAfterNoCol,
-        summaryStartCol,
-        summaryEndCol,
-        spacerAfterSummary,
-        workedHoursStartCol,
-        workedHoursEndCol,
-        totalColumns: workedHoursEndCol + 1,
-    };
-};
-
-type GridRange = {
-    startRow: number;
-    endRow: number;
-    startColumn: number;
-    endColumn: number;
-};
-
-type DevPerfSnapshot = {
-    initInteractiveMs: number;
-    monthlyLoadSource: string;
-    monthlyLoadMs: number;
-    weekdayShiftSource: string;
-    weekdayShiftMs: number;
-    holidayShiftSource: string;
-    holidayShiftMs: number;
-    previousMonthSource: string;
-    previousMonthMs: number;
-    recalculationMs: number;
-};
-
-const toGridRange = (raw: any): GridRange | null => {
-    if (!raw || typeof raw !== 'object') return null;
-
-    const startRow = Number(raw.startRow);
-    const endRow = Number(raw.endRow);
-    const startColumn = Number(raw.startColumn);
-    const endColumn = Number(raw.endColumn);
-
-    if (![startRow, endRow, startColumn, endColumn].every(Number.isFinite)) {
-        return null;
-    }
-
-    return {
-        startRow: Math.min(startRow, endRow),
-        endRow: Math.max(startRow, endRow),
-        startColumn: Math.min(startColumn, endColumn),
-        endColumn: Math.max(startColumn, endColumn),
-    };
-};
-
-const getEffectiveCommandRange = (params: any): GridRange | null => {
-    const rawRanges: any[] = [];
-
-    if (params?.range) rawRanges.push(params.range);
-    if (Array.isArray(params?.ranges)) rawRanges.push(...params.ranges);
-    if (params?.targetRange) rawRanges.push(params.targetRange);
-    if (params?.pasteRange) rawRanges.push(params.pasteRange);
-    if (params?.selection?.range) rawRanges.push(params.selection.range);
-    if (Array.isArray(params?.selections)) {
-        params.selections.forEach((selection: any) => {
-            if (selection?.range) rawRanges.push(selection.range);
-        });
-    }
-
-    const normalized = rawRanges
-        .map(toGridRange)
-        .filter((range): range is GridRange => Boolean(range));
-
-    if (normalized.length === 0) return null;
-    if (normalized.length === 1) return normalized[0];
-
-    return normalized.reduce((acc, current) => ({
-        startRow: Math.min(acc.startRow, current.startRow),
-        endRow: Math.max(acc.endRow, current.endRow),
-        startColumn: Math.min(acc.startColumn, current.startColumn),
-        endColumn: Math.max(acc.endColumn, current.endColumn),
-    }));
-};
-
-const getRangeFromRowColumnMap = (input: any): GridRange | null => {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
-
-    let minRow = Number.POSITIVE_INFINITY;
-    let maxRow = Number.NEGATIVE_INFINITY;
-    let minColumn = Number.POSITIVE_INFINITY;
-    let maxColumn = Number.NEGATIVE_INFINITY;
-    let hasAny = false;
-
-    Object.keys(input).forEach((rowKey) => {
-        const rowNumber = Number(rowKey);
-        if (!Number.isInteger(rowNumber)) return;
-
-        const rowValue = input[rowKey];
-        if (!rowValue || typeof rowValue !== 'object') return;
-
-        Object.keys(rowValue).forEach((columnKey) => {
-            const columnNumber = Number(columnKey);
-            if (!Number.isInteger(columnNumber)) return;
-
-            hasAny = true;
-            minRow = Math.min(minRow, rowNumber);
-            maxRow = Math.max(maxRow, rowNumber);
-            minColumn = Math.min(minColumn, columnNumber);
-            maxColumn = Math.max(maxColumn, columnNumber);
-        });
-    });
-
-    if (!hasAny) return null;
-
-    return {
-        startRow: minRow,
-        endRow: maxRow,
-        startColumn: minColumn,
-        endColumn: maxColumn,
-    };
-};
+import {
+    SCHEDULE_TEMPLATE,
+    GRID_ROW_OFFSET,
+    PJM_POSITION_NAME,
+    MATRIX_COLORS_STORAGE_KEY,
+    AUTO_SAVE_DEBOUNCE_MS,
+    PREVIOUS_MONTH_CACHE_TTL_MS,
+    MONTHLY_SCHEDULE_CACHE_TTL_MS,
+    MONTHLY_SCHEDULE_CACHE_RADIUS,
+    PREVIOUS_MONTH_BALANCE_CACHE_TTL_MS,
+    SHIFT_SCHEDULE_MAP_CACHE_TTL_MS,
+    SCHEDULE_PERF_DEBUG,
+    NIGHT_WORK_CORRECTION_FACTOR,
+    MATRIX_COLOR_DEFAULTS,
+    SUMMARY_HEADERS,
+    SUMMARY_FIELD_KEYS,
+    SUMMARY_HEADER_DISPLAY,
+    EXEMPTION_CODES,
+} from './scheduleConstants';
+import type { GridRange, DevPerfSnapshot } from './scheduleConstants';
+import {
+    getShiftCodeColumnWidth,
+    getSummaryColumnWidths,
+    getScheduleRefValue,
+    buildScheduleVersionSignature,
+    getSheetLayout,
+    toGridRange,
+    getEmployeeDisplayName,
+    sortEmployeesByName,
+    getPositionColumnWidth,
+    getNameColumnWidth,
+    isPjmPositionName,
+    resolveMatrixRowByNumber,
+    getGlobalColumnConflictSummary,
+    hasAnyGlobalColumnConflict,
+    buildGlobalConflictMessage,
+} from './scheduleGridHelpers';
+import { RecalculatePersonalAccountsButton } from './RecalculatePersonalAccountsButton';
+import { ManageEmployeesDialog } from './ManageEmployeesDialog';
+import { ScheduleToolbar } from './ScheduleToolbar';
 
 export const UniverScheduleGrid = () => {
     const record = useRecordContext();
@@ -451,6 +96,7 @@ export const UniverScheduleGrid = () => {
     const notify = useNotify();
     const containerRef = useRef<HTMLDivElement>(null);
     const univerRef = useRef<Univer | null>(null);
+    const univerAPIRef = useRef<ReturnType<typeof FUniver.newAPI> | null>(null);
     const workbookRef = useRef<any>(null);
     
     // State
@@ -538,7 +184,6 @@ export const UniverScheduleGrid = () => {
     const previousMonthBalanceByEmployeeRef = useRef<Record<string, number>>(previousMonthBalanceByEmployee);
     const calendarNonWorkingDaysRef = useRef<Set<number>>(calendarNonWorkingDays);
     const colorApplyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const canUseSetRangeCommandRef = useRef<boolean | null>(null);
     const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const autoSaveIdleCallbackRef = useRef<number | null>(null);
     const autoSaveStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -906,9 +551,6 @@ export const UniverScheduleGrid = () => {
                 const isMatrixMode = workbookMatrixModeRef.current;
                 const daysInMonth = new Date(year, month, 0).getDate();
                 const layout = getSheetLayout(isMatrixMode, daysInMonth);
-                const unitId = workbookRef.current.getUnitId();
-                const sheetId = sheet.getSheetId();
-                const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
 
                 const normalizeCellValue = (value: any) => String(value ?? '');
                 const resolveCurrentStyle = (styleRef: any) => {
@@ -943,7 +585,7 @@ export const UniverScheduleGrid = () => {
                         return false;
                     }
 
-                    await setCellValueSafely(commandService, unitId, sheetId, sheet, row, column, nextValue, nextStyle);
+                    await setCellValueSafely(row, column, nextValue, nextStyle);
                     return true;
                 };
 
@@ -1567,9 +1209,6 @@ export const UniverScheduleGrid = () => {
     };
 
     const applyDerivedTables = async (
-        commandService: any,
-        unitId: string,
-        subUnitId: string,
         sheet: any,
         lastEmployeeRow: number,
         layout: ReturnType<typeof getSheetLayout>,
@@ -1660,108 +1299,22 @@ export const UniverScheduleGrid = () => {
         }
     };
 
-    const getGlobalColumnConflictSummary = (sheet: any, lastEmployeeRow: number) => {
-        const globalValues = new Set<string>();
-        const p1Values = new Set<string>();
-        const p2Values = new Set<string>();
-        const p3Values = new Set<string>();
-
-        for (let r = GRID_ROW_OFFSET; r <= lastEmployeeRow; r++) {
-            const g = String(sheet.getCell(r, 0)?.v ?? '').trim();
-            const p1 = String(sheet.getCell(r, 1)?.v ?? '').trim();
-            const p2 = String(sheet.getCell(r, 2)?.v ?? '').trim();
-            const p3 = String(sheet.getCell(r, 3)?.v ?? '').trim();
-
-            if (g) globalValues.add(g);
-            if (p1) p1Values.add(p1);
-            if (p2) p2Values.add(p2);
-            if (p3) p3Values.add(p3);
-        }
-
-        const globalVsP1 = new Set<string>(Array.from(globalValues).filter(v => p1Values.has(v)));
-        const globalVsP2 = new Set<string>(Array.from(globalValues).filter(v => p2Values.has(v)));
-        const globalVsP3 = new Set<string>(Array.from(globalValues).filter(v => p3Values.has(v)));
-
-        return { globalValues, p1Values, p2Values, p3Values, globalVsP1, globalVsP2, globalVsP3 };
-    };
-
-    const hasAnyGlobalColumnConflict = (summary: {
-        globalVsP1: Set<string>;
-        globalVsP2: Set<string>;
-        globalVsP3: Set<string>;
-    }) => summary.globalVsP1.size > 0 || summary.globalVsP2.size > 0 || summary.globalVsP3.size > 0;
-
-    const buildGlobalConflictMessage = (summary: {
-        globalVsP1: Set<string>;
-        globalVsP2: Set<string>;
-        globalVsP3: Set<string>;
-    }) => {
-        const parts: string[] = [];
-
-        if (summary.globalVsP1.size > 0) {
-            const sample = Array.from(summary.globalVsP1).slice(0, 3).join(', ');
-            parts.push(`Global↔P1 [${sample}]`);
-        }
-        if (summary.globalVsP2.size > 0) {
-            const sample = Array.from(summary.globalVsP2).slice(0, 3).join(', ');
-            parts.push(`Global↔P2 [${sample}]`);
-        }
-        if (summary.globalVsP3.size > 0) {
-            const sample = Array.from(summary.globalVsP3).slice(0, 3).join(', ');
-            parts.push(`Global↔P3 [${sample}]`);
-        }
-
-        return parts.join('; ');
-    };
-
     const setCellValueSafely = async (
-        commandService: any,
-        unitId: string,
-        subUnitId: string,
-        sheet: any,
         row: number,
         column: number,
         value: any,
         style?: any
     ) => {
-        if (canUseSetRangeCommandRef.current !== false) {
-            try {
-                await commandService.executeCommand(SetRangeValuesCommand.id, {
-                    unitId,
-                    subUnitId,
-                    range: { startRow: row, startColumn: column, endRow: row, endColumn: column },
-                    value: style !== undefined ? { v: value, s: style } : { v: value }
-                });
-                canUseSetRangeCommandRef.current = true;
-                return;
-            } catch (err: any) {
-                const message = String(err?.message ?? err ?? '');
-                if (message.includes('not registered')) {
-                    canUseSetRangeCommandRef.current = false;
-                } else {
-                    console.warn('SetRangeValuesCommand failed, applying direct cell fallback.', err);
-                }
-            }
-        }
+        const univerAPI = univerAPIRef.current;
+        if (!univerAPI) return;
 
         try {
-            const currentCell = sheet?.getCell?.(row, column) ?? {};
-            const nextCell = { ...(currentCell || {}) };
-
-            if (value !== undefined) nextCell.v = value;
-            if (style !== undefined) nextCell.s = style;
-
-            if (typeof sheet?.setCell === 'function') {
-                sheet.setCell(row, column, nextCell);
-                return;
-            }
-
-            if (currentCell && typeof currentCell === 'object') {
-                if (value !== undefined) currentCell.v = value;
-                if (style !== undefined) currentCell.s = style;
-            }
-        } catch (fallbackErr) {
-            console.warn('Direct cell fallback failed.', fallbackErr);
+            await univerAPI.executeCommand('sheet.command.set-range-values', {
+                range: { startRow: row, startColumn: column, endRow: row, endColumn: column },
+                value: style !== undefined ? { v: value, s: style } : { v: value }
+            });
+        } catch (err) {
+            console.warn('setCellValueSafely failed.', err);
         }
     };
 
@@ -1794,9 +1347,6 @@ export const UniverScheduleGrid = () => {
     };
 
     const applyMatrixFrequencyStyles = async (
-        commandService: any,
-        unitId: string,
-        subUnitId: string,
         sheet: any,
         lastEmployeeRow: number,
         matrixColumns: number[] = [0, 1, 2, 3]
@@ -1837,15 +1387,12 @@ export const UniverScheduleGrid = () => {
                 // Without it Univer merges the new style with the existing one and
                 // the previous validation color (green/duplicate) persists.
                 const resolvedStyle = key ? style : { ...SCHEDULE_TEMPLATE.matrixInputCell, bg: null };
-                await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, col, currentValue, resolvedStyle);
+                await setCellValueSafely(r, col, currentValue, resolvedStyle);
             }
         }
     };
 
     const applyWeekendStyles = async (
-        commandService: any,
-        unitId: string,
-        subUnitId: string,
         sheet: any,
         lastEmployeeRow: number,
         firstDayCol: number,
@@ -1943,15 +1490,6 @@ export const UniverScheduleGrid = () => {
         return false;
     };
 
-    const getEmployeeDisplayName = (emp: any) => {
-        if (emp?.fullName) return String(emp.fullName).trim();
-        return [emp?.first_name, emp?.middle_name, emp?.last_name].filter(Boolean).join(' ').trim();
-    };
-
-    const sortEmployeesByName = (employees: any[]) => {
-        return [...employees].sort((a, b) => getEmployeeDisplayName(a).localeCompare(getEmployeeDisplayName(b), 'bg', { sensitivity: 'base' }));
-    };
-
     const getShiftScheduleNameByRef = (scheduleRef: any): string => {
         const normalizedRef = getScheduleRefValue(scheduleRef);
         if (!normalizedRef) return '';
@@ -1966,24 +1504,6 @@ export const UniverScheduleGrid = () => {
         return String(found?.name ?? '').trim();
     };
 
-    const getPositionColumnWidth = (positionName: string) => {
-        const text = String(positionName ?? '').trim();
-        const estimated = Math.max(120, Math.ceil(text.length * 8.5) + 24);
-        return Math.min(estimated, 420);
-    };
-
-    const getNameColumnWidth = (employees: any[]) => {
-        const longestNameLength = employees.reduce((max, emp) => {
-            const nameLength = getEmployeeDisplayName(emp).length;
-            return Math.max(max, nameLength);
-        }, 24);
-
-        const estimated = Math.max(250, Math.ceil(longestNameLength * 8.5) + 28);
-        return Math.min(estimated, 560);
-    };
-
-    const isPjmPositionName = (name: any) => String(name ?? '').trim().toLowerCase() === PJM_POSITION_NAME;
-
     useEffect(() => {
         const positionName = typeof record?.position === 'object' ? record.position?.name : '';
         if (positionName) {
@@ -1993,41 +1513,7 @@ export const UniverScheduleGrid = () => {
         }
     }, [record?.id, record?.position]);
 
-    const resolveMatrixRowByNumber = (matrixRows: any[] | null, rawValue: any) => {
-        const normalized = String(rawValue ?? '').trim();
-        if (!normalized) {
-            return { targetRow: null, rowNumber: null, invalidReason: '' };
-        }
-
-        const rowNumber = Number(normalized);
-        if (!Number.isInteger(rowNumber) || rowNumber < 1) {
-            return {
-                targetRow: null,
-                rowNumber: null,
-                invalidReason: `невалиден номер "${normalized}"`
-            };
-        }
-
-        if (!matrixRows || matrixRows.length === 0) {
-            return { targetRow: null, rowNumber, invalidReason: '' };
-        }
-
-        const targetRow = matrixRows.find((mr: any) => Number(mr.row) === rowNumber) || matrixRows[rowNumber - 1];
-        if (!targetRow) {
-            return {
-                targetRow: null,
-                rowNumber,
-                invalidReason: `ред №${rowNumber} е извън диапазона (1-${matrixRows.length})`
-            };
-        }
-
-        return { targetRow, rowNumber, invalidReason: '' };
-    };
-
     const applyMatrixInputsToDayCells = async (
-        commandService: any,
-        unitId: string,
-        subUnitId: string,
         sheet: any,
         startRow: number,
         endRow: number,
@@ -2084,9 +1570,9 @@ export const UniverScheduleGrid = () => {
 
                 if (hasMatrixInput) {
                     const val = getValForDay(d, startPosToUse, r - GRID_ROW_OFFSET + 1);
-                    await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, c, val);
+                    await setCellValueSafely(r, c, val);
                 } else {
-                    await setCellValueSafely(commandService, unitId, subUnitId, sheet, r, c, '', SCHEDULE_TEMPLATE.normalCell);
+                    await setCellValueSafely(r, c, '', SCHEDULE_TEMPLATE.normalCell);
                 }
             }
         }
@@ -2214,16 +1700,8 @@ export const UniverScheduleGrid = () => {
 
         const univer = new Univer({
             theme: defaultTheme,
-            locale: LocaleType.EN_US,
-            locales: {
-                [LocaleType.EN_US]: {
-                    ...UniverDesignEnUS,
-                    ...UniverDocsUIEnUS,
-                    ...UniverSheetsFormulaUIEnUS,
-                    ...UniverSheetsUIEnUS,
-                    ...UniverUIEnUS,
-                },
-            },
+            locale: BG_LOCALE as any,
+            locales: BulgarianLanguage,
         });
         
         univer.registerPlugin(UniverRenderEnginePlugin);
@@ -2243,90 +1721,39 @@ export const UniverScheduleGrid = () => {
 
         univerRef.current = univer;
 
-        // Validation Listener: Update Count (Col 0) when Global (Col 1) changes
-        const injector = (univer as any).__getInjector();
-        const commandService = injector.get(ICommandService);
-        const univerInstanceService = injector.get(IUniverInstanceService);
+        // Cell value change listener via Facade API event
+        const univerAPI = FUniver.newAPI(univer);
+        univerAPIRef.current = univerAPI;
 
-        commandService.onCommandExecuted(async (command: any) => {
-            const params = command?.params;
-            const commandId = String(command?.id ?? '');
-            const normalizedCommandId = commandId.toLowerCase();
+        univerAPI.addEvent(univerAPI.Event.SheetValueChanged, async (params) => {
             if (isApplyingPeriodStylesRef.current) return;
             if (isApplyingRemoteSyncRef.current) return;
 
             const activeWorkbook = workbookRef.current;
-            const fallbackUnitId = typeof activeWorkbook?.getUnitId === 'function'
-                ? activeWorkbook.getUnitId()
-                : (typeof activeWorkbook?.getId === 'function' ? activeWorkbook.getId() : undefined);
-            const fallbackSubUnitId = activeWorkbook?.getActiveSheet?.()?.getSheetId?.();
+            if (!activeWorkbook) return;
 
-            const unitId = params?.unitId || fallbackUnitId;
-            const subUnitId = params?.subUnitId || fallbackSubUnitId;
-
-            if (!unitId) return;
-
-            const wb = univerInstanceService.getUnit(unitId) || activeWorkbook;
-            const sheet = subUnitId
-                ? (wb?.getSheetBySheetId?.(subUnitId) || wb?.getActiveSheet?.())
-                : wb?.getActiveSheet?.();
+            const sheet = activeWorkbook.getActiveSheet?.();
             if (!sheet) return;
-            const resolvedSubUnitId = subUnitId || sheet?.getSheetId?.();
 
-            const rangeFromCellMap = getRangeFromRowColumnMap(params?.cellValue)
-                || getRangeFromRowColumnMap(params?.value);
-            const rangeFromCommand = getEffectiveCommandRange(params);
-            const isPasteLikeCommand = normalizedCommandId.includes('paste') || normalizedCommandId.includes('clipboard');
-            const isLikelyNavigationCommand =
-                normalizedCommandId.includes('selection')
-                || normalizedCommandId.includes('focus')
-                || normalizedCommandId.includes('scroll')
-                || normalizedCommandId.includes('hover')
-                || normalizedCommandId.includes('activate')
-                || normalizedCommandId.includes('set-active');
-            const hasExplicitPayload = params && (
-                params.value !== undefined
-                || params.cellValue !== undefined
-                || params.values !== undefined
-                || params.data !== undefined
-                || params.oldValue !== undefined
-                || params.newValue !== undefined
-            );
-            const isCellMutationCommand =
-                normalizedCommandId.includes('set-range-values')
-                || normalizedCommandId.includes('setrangevalues')
-                || normalizedCommandId.includes('set-cell')
-                || normalizedCommandId.includes('setcell')
-                || normalizedCommandId.includes('update-cell')
-                || normalizedCommandId.includes('clear-content')
-                || normalizedCommandId.includes('delete-range');
-            const hasValuePayload = hasExplicitPayload
-                || Boolean(rangeFromCellMap)
-                || commandId === SetRangeValuesCommand.id
-                || isCellMutationCommand;
+            const effectedRanges = params?.effectedRanges;
+            if (!effectedRanges || effectedRanges.length === 0) return;
 
-            // Ignore pure selection/focus/navigation commands only when there is no edit payload.
-            if (isLikelyNavigationCommand && !hasValuePayload && !isPasteLikeCommand) return;
-
-            const range = rangeFromCellMap
-                || rangeFromCommand
-                || (isPasteLikeCommand
-                    ? (
-                        toGridRange(sheet?.getSelections?.()?.[0]?.range)
-                        || toGridRange(sheet?.getSelection?.()?.range)
-                        || toGridRange(sheet?.getActiveRange?.())
-                    )
-                    : null);
-
-            let effectiveRange = range;
-
-            if (!effectiveRange) {
-                if (!hasValuePayload && !isPasteLikeCommand) return;
-                const fallbackRange = toGridRange(sheet?.getSelections?.()?.[0]?.range)
-                    || toGridRange(sheet?.getSelection?.()?.range)
-                    || toGridRange(sheet?.getActiveRange?.());
-                if (!fallbackRange) return;
-                effectiveRange = fallbackRange;
+            // Merge all affected FRange objects into a single bounding GridRange
+            let effectiveRange: GridRange | null = null;
+            for (const fRange of effectedRanges) {
+                const raw = fRange.getRange();
+                const gr = toGridRange(raw);
+                if (!gr) continue;
+                if (!effectiveRange) {
+                    effectiveRange = gr;
+                } else {
+                    effectiveRange = {
+                        startRow: Math.min(effectiveRange.startRow, gr.startRow),
+                        endRow: Math.max(effectiveRange.endRow, gr.endRow),
+                        startColumn: Math.min(effectiveRange.startColumn, gr.startColumn),
+                        endColumn: Math.max(effectiveRange.endColumn, gr.endColumn),
+                    };
+                }
             }
 
             if (!effectiveRange) return;
@@ -2337,10 +1764,6 @@ export const UniverScheduleGrid = () => {
                 const employeeRowsCount = loadedEmployeesRef.current.length;
                 const lastEmployeeRow = GRID_ROW_OFFSET + employeeRowsCount - 1;
                 if (employeeRowsCount <= 0) return;
-
-                if (!resolvedSubUnitId) {
-                    return;
-                }
 
                 const affectedStartRow = Math.max(effectiveRange.startRow, GRID_ROW_OFFSET);
                 const affectedEndRow = Math.min(effectiveRange.endRow, lastEmployeeRow);
@@ -2374,7 +1797,7 @@ export const UniverScheduleGrid = () => {
                 if (isMatrixMode && effectiveRange.startColumn <= 3 && effectiveRange.endColumn >= 0) {
                     isApplyingPeriodStylesRef.current = true;
                     try {
-                        await applyMatrixFrequencyStyles(commandService, unitId, resolvedSubUnitId, sheet, lastEmployeeRow, [0, 1, 2, 3]);
+                        await applyMatrixFrequencyStyles(sheet, lastEmployeeRow, [0, 1, 2, 3]);
                     } finally {
                         isApplyingPeriodStylesRef.current = false;
                     }
@@ -2387,9 +1810,6 @@ export const UniverScheduleGrid = () => {
                     isApplyingPeriodStylesRef.current = true;
                     try {
                         await applyMatrixInputsToDayCells(
-                            commandService,
-                            unitId,
-                            resolvedSubUnitId,
                             sheet,
                             startRow,
                             endRow,
@@ -2405,9 +1825,6 @@ export const UniverScheduleGrid = () => {
                     isApplyingPeriodStylesRef.current = true;
                     try {
                         await runWithRecalculationIndicator(() => applyDerivedTables(
-                            commandService,
-                            unitId,
-                            resolvedSubUnitId,
                             sheet,
                             lastEmployeeRow,
                             layout,
@@ -2430,6 +1847,7 @@ export const UniverScheduleGrid = () => {
                 univerRef.current.dispose();
                 univerRef.current = null;
             }
+            univerAPIRef.current = null;
             workbookRef.current = null;
             workbookMatrixModeRef.current = false;
         };
@@ -2849,7 +2267,7 @@ export const UniverScheduleGrid = () => {
                         columnData
                     }
                 },
-                locale: LocaleType.EN_US,
+                locale: BG_LOCALE as any,
                 styles: {}
             };
             
@@ -2873,9 +2291,6 @@ export const UniverScheduleGrid = () => {
                             isApplyingPeriodStylesRef.current = true;
                             try {
                                 await runWithRecalculationIndicator(() => applyDerivedTables(
-                                    commandService,
-                                    workbookRef.current.getUnitId(),
-                                    createdSheet.getSheetId(),
                                     createdSheet,
                                     lastEmployeeRow,
                                     derivedLayout,
@@ -2948,7 +2363,6 @@ export const UniverScheduleGrid = () => {
             const layout = getSheetLayout(isMatrixMode, daysInMonth);
             const firstDayCol = layout.firstDayCol;
 
-            const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
             const startedAt = SCHEDULE_PERF_DEBUG ? performance.now() : 0;
 
             (async () => {
@@ -2956,18 +2370,12 @@ export const UniverScheduleGrid = () => {
                 try {
                     if (isMatrixMode) {
                         await applyMatrixFrequencyStyles(
-                            commandService,
-                            workbookRef.current.getUnitId(),
-                            sheet.getSheetId(),
                             sheet,
                             lastEmployeeRow
                         );
                     }
 
                     await applyWeekendStyles(
-                        commandService,
-                        workbookRef.current.getUnitId(),
-                        sheet.getSheetId(),
                         sheet,
                         lastEmployeeRow,
                         firstDayCol,
@@ -2978,9 +2386,6 @@ export const UniverScheduleGrid = () => {
                     );
 
                     await runWithRecalculationIndicator(() => applyDerivedTables(
-                        commandService,
-                        workbookRef.current.getUnitId(),
-                        sheet.getSheetId(),
                         sheet,
                         lastEmployeeRow,
                         layout,
@@ -3336,7 +2741,6 @@ export const UniverScheduleGrid = () => {
         // We will simulate a simple "Cycle" logic (Day, Night, Rest, Rest)
         // In production, we must use `patterns` and `OrderPatternDetails`.
         
-        const commandService = (univerRef.current as any).__getInjector().get(ICommandService);
         const daysInMonth = new Date(record.year, record.month, 0).getDate();
         const layout = getSheetLayout(workbookMatrixModeRef.current, daysInMonth);
 
@@ -3400,7 +2804,7 @@ export const UniverScheduleGrid = () => {
 
                          // Always write, even if empty, to overwrite old data
                          const c = firstDayCol + d - 1;
-                         await setCellValueSafely(commandService, wb.getUnitId(), sheet.getSheetId(), sheet, r, c, val);
+                         await setCellValueSafely(r, c, val);
                      }
                  }
              }
@@ -3420,9 +2824,6 @@ export const UniverScheduleGrid = () => {
         isApplyingPeriodStylesRef.current = true;
         try {
             await runWithRecalculationIndicator(() => applyDerivedTables(
-                commandService,
-                wb.getUnitId(),
-                sheet.getSheetId(),
                 sheet,
                 lastEmployeeRow,
                 layout,
@@ -3480,57 +2881,6 @@ export const UniverScheduleGrid = () => {
         }, 120);
     };
 
-    const RecalculatePersonalAccountsButton = () => {
-        const record = useRecordContext<any>();
-        const notify = useNotify();
-        const refresh = useRefresh();
-    
-        const resolveScheduleId = (value: unknown): string => {
-            const raw = String(value ?? '').trim();
-            if (!raw) return '';
-    
-            // React-admin can hydrate id as IRI (e.g. /monthly_schedules/1).
-            const iriMatch = raw.match(/\/monthly_schedules\/([^/]+)$/);
-            if (iriMatch?.[1]) {
-                return iriMatch[1];
-            }
-    
-            return raw.replace(/^\/+|\/+$/g, '');
-        };
-    
-        const recalculate = async () => {
-            const scheduleId = resolveScheduleId(record?.id);
-            if (!scheduleId) return;
-    
-            try {
-                const token = getToken();
-                const response = await fetch(`${window.origin}/monthly_schedules/${encodeURIComponent(scheduleId)}/personal_accounts/recalculate`, {
-                    method: 'POST',
-                    headers: {
-                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                        'Content-Type': 'application/json',
-                    },
-                });
-    
-                if (!response.ok) {
-                    throw new Error('Неуспешна рекалкулация на личните сметки.');
-                }
-    
-                const payload = await response.json();
-                notify(`Преизчислени лични сметки: ${payload?.processed_accounts ?? 0}`, { type: 'success' });
-                refresh();
-            } catch (error: any) {
-                notify(error?.message || 'Грешка при преизчисляване на личните сметки.', { type: 'error' });
-            }
-        };
-    
-        return (
-            <Button variant="outlined" onClick={recalculate}>
-                Преизчисли лични сметки
-            </Button>
-        );
-    };
-
     return (
         <>
             <GlobalStyles
@@ -3576,370 +2926,48 @@ export const UniverScheduleGrid = () => {
                 display="flex" 
                 flexDirection="column"
             >
-            <Box p={1} bgcolor="#f5f5f5" display="flex" gap={2} alignItems="center" flexWrap="wrap">
-                {calendarStats && (
-                    <Box display="flex" alignItems="center" bgcolor="#e3f2fd" px={2} py={1} borderRadius={1} border="1px solid #90caf9" mr={2}>
-                        <Typography variant="body2" color="primary" fontWeight="bold" sx={{ mr: 1 }}>
-                            {new Date(record.year, record.month - 1).toLocaleString('bg-BG', { month: 'long' }).toUpperCase()}:
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                            {calendarStats.workDays} дни / {calendarStats.workHours} часа
-                        </Typography>
-                    </Box>
-                )}
-
-                <Box
-                    display="flex"
-                    alignItems="center"
-                    px={1.5}
-                    py={0.75}
-                    borderRadius={1}
-                    bgcolor={showMatrixConfig ? "#e8f5e9" : "#f3f4f6"}
-                    border={showMatrixConfig ? "1px solid #a5d6a7" : "1px solid #d1d5db"}
-                >
-                    <Typography variant="caption" fontWeight="bold" color={showMatrixConfig ? "#2e7d32" : "textSecondary"}>
-                        {showMatrixConfig ? 'Режим: С матрица' : 'Режим: Без матрица'}
-                    </Typography>
-                </Box>
-
-                {showMatrixConfig && (
-                    <>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">Матрица:</Typography>
-                            <FormControl size="small" sx={{ minWidth: 250 }}>
-                                <Select
-                                    value={selectedMatrixId}
-                                    onChange={(e) => setSelectedMatrixId(e.target.value)}
-                                    displayEmpty
-                                >
-                                     <MenuItem value="" disabled><em>Избери Матрица</em></MenuItem>
-                                    {matrixData.map((m: any) => {
-                                         const monthName = new Date(m.year, m.month - 1).toLocaleString('bg-BG', { month: 'long' });
-                                         const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
-                                         const patternName = (typeof m === 'object' && m.patternName) ? m.patternName : (m.pattern || 'Unknown');
-                                         
-                                         const label = `${capitalizedMonth} - ${patternName}`; 
-                                         return <MenuItem key={m.id} value={String(m.id)}>{label}</MenuItem>;
-                                    })}
-                                </Select>
-                            </FormControl>
-                        </Box>
-
-                        <TextField 
-                            label="П1 Край"
-                            type="number"
-                            size="small"
-                            value={periods.p1End}
-                            onChange={e => setPeriods(p => ({ ...p, p1End: Number(e.target.value) }))}
-                            sx={{ width: 100 }}
-                        />
-                        <TextField 
-                            label="П2 Край"
-                            type="number"
-                            size="small"
-                            value={periods.p2End}
-                            onChange={e => setPeriods(p => ({ ...p, p2End: Number(e.target.value) }))}
-                            sx={{ width: 100 }}
-                        />
-
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                            <Typography variant="caption" fontWeight="bold">Уникален</Typography>
-                            <TextField
-                                type="color"
-                                size="small"
-                                value={matrixValidationColors.single}
-                                onChange={e => setMatrixValidationColors(prev => ({ ...prev, single: e.target.value }))}
-                                sx={{ width: 46, minWidth: 46, '& .MuiInputBase-input': { p: 0.25, height: 28 } }}
-                            />
-                        </Box>
-
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                            <Typography variant="caption" fontWeight="bold">Дублиран</Typography>
-                            <TextField
-                                type="color"
-                                size="small"
-                                value={matrixValidationColors.duplicate}
-                                onChange={e => setMatrixValidationColors(prev => ({ ...prev, duplicate: e.target.value }))}
-                                sx={{ width: 46, minWidth: 46, '& .MuiInputBase-input': { p: 0.25, height: 28 } }}
-                            />
-                        </Box>
-
-                        <Box display="flex" alignItems="center" gap={0.5}>
-                            <Typography variant="caption" fontWeight="bold">Празнични</Typography>
-                            <TextField
-                                type="color"
-                                size="small"
-                                value={matrixValidationColors.weekend}
-                                onChange={e => setMatrixValidationColors(prev => ({ ...prev, weekend: e.target.value }))}
-                                sx={{ width: 46, minWidth: 46, '& .MuiInputBase-input': { p: 0.25, height: 28 } }}
-                            />
-                        </Box>
-
-                        <RecalculatePersonalAccountsButton />
-
-                        {/*<Button
-                            size="small"
-                            variant="text"
-                            onClick={() => setMatrixValidationColors(MATRIX_COLOR_DEFAULTS)}
-                            sx={{ minWidth: 'auto', px: 1 }}
-                        >
-                            Възстанови
-                        </Button>*/}
-                    </>
-                )}
-
-                {showMatrixConfig ? (
-                    <>
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">Делник:</Typography>
-                            <FormControl size="small" sx={{ minWidth: 220 }}>
-                                <Select
-                                    value={weekdayShiftSchedule}
-                                    onChange={(e) => setWeekdayShiftSchedule(String(e.target.value))}
-                                    displayEmpty
-                                >
-                                    <MenuItem value=""><em>График за делник</em></MenuItem>
-                                    {shiftScheduleOptions.map((s: any) => (
-                                        <MenuItem key={String(s.id)} value={String(s['@id'] || `/shift_schedules/${s.id}`)}>
-                                            {s.name || `График #${s.id}`}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Box>
-
-                        <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">Празник:</Typography>
-                            <FormControl size="small" sx={{ minWidth: 220 }}>
-                                <Select
-                                    value={holidayShiftSchedule}
-                                    onChange={(e) => setHolidayShiftSchedule(String(e.target.value))}
-                                    displayEmpty
-                                >
-                                    <MenuItem value=""><em>График за празник</em></MenuItem>
-                                    {shiftScheduleOptions.map((s: any) => (
-                                        <MenuItem key={`h-${String(s.id)}`} value={String(s['@id'] || `/shift_schedules/${s.id}`)}>
-                                            {s.name || `График #${s.id}`}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                        </Box>
-                    </>
-                ) : (
-                    <Box display="flex" alignItems="center" gap={1}>
-                        <Typography variant="body2" fontWeight="bold">График смени:</Typography>
-                        <FormControl size="small" sx={{ minWidth: 240 }}>
-                            <Select
-                                value={weekdayShiftSchedule}
-                                onChange={(e) => setWeekdayShiftSchedule(String(e.target.value))}
-                                displayEmpty
-                            >
-                                <MenuItem value=""><em>Избери график за смени</em></MenuItem>
-                                {shiftScheduleOptions.map((s: any) => (
-                                    <MenuItem key={`nm-${String(s.id)}`} value={String(s['@id'] || `/shift_schedules/${s.id}`)}>
-                                        {s.name || `График #${s.id}`}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Box>
-                )}
-
-                <FormControlLabel
-                    control={
-                        <Switch
-                            checked={linkPreviousMonthBalance}
-                            onChange={(e) => setLinkPreviousMonthBalance(e.target.checked)}
-                        />
-                    }
-                    label="Вземи +/- от минал месец"
-                />
-
-                <Box
-                    display="flex"
-                    alignItems="center"
-                    px={1.5}
-                    py={0.75}
-                    borderRadius={1}
-                    bgcolor={
-                        previousMonthStatus === 'found'
-                            ? '#e8f5e9'
-                            : previousMonthStatus === 'missing'
-                                ? '#fff3e0'
-                                : previousMonthStatus === 'error'
-                                    ? '#ffebee'
-                                    : previousMonthStatus === 'loading'
-                                        ? '#e3f2fd'
-                                        : '#f3f4f6'
-                    }
-                    border={
-                        previousMonthStatus === 'found'
-                            ? '1px solid #a5d6a7'
-                            : previousMonthStatus === 'missing'
-                                ? '1px solid #ffcc80'
-                                : previousMonthStatus === 'error'
-                                    ? '1px solid #ef9a9a'
-                                    : previousMonthStatus === 'loading'
-                                        ? '1px solid #90caf9'
-                                        : '1px solid #d1d5db'
-                    }
-                    gap={1}
-                >
-                    {previousMonthStatus === 'loading' && <CircularProgress size={14} />}
-                    <Typography variant="caption" fontWeight="bold" color={previousMonthStatus === 'error' ? 'error.main' : 'textSecondary'}>
-                        {previousMonthStatus === 'off' && 'Минал месец: изкл.'}
-                        {previousMonthStatus === 'loading' && `Минал месец: търси ${previousMonthLabel || ''}`}
-                        {previousMonthStatus === 'found' && `Минал месец: намерен ${previousMonthLabel || ''}`}
-                        {previousMonthStatus === 'missing' && `Минал месец: няма данни за ${previousMonthLabel || ''}`}
-                        {previousMonthStatus === 'error' && 'Минал месец: грешка при зареждане'}
-                    </Typography>
-                </Box>
-
-                {isRecalculating && (
-                    <Box
-                        display="flex"
-                        alignItems="center"
-                        px={1.5}
-                        py={0.75}
-                        borderRadius={1}
-                        bgcolor="#e3f2fd"
-                        border="1px solid #90caf9"
-                        gap={1}
-                    >
-                        <CircularProgress size={14} />
-                        <Typography variant="caption" fontWeight="bold" color="textSecondary">
-                            Преизчисляване...
-                        </Typography>
-                    </Box>
-                )}
-                {/* Auto -Fill Button 
-                <Button variant="contained" onClick={handleCalculate} color="secondary" size="small">
-                    Авто-Попълване
-                </Button>
-                */}
-                <Button variant="outlined" onClick={handleOpenManage} disabled={isLoading} startIcon={<PersonAdd />} sx={{ mr: 1 }}>
-                    Служители
-                </Button>
-
-                <Box
-                    display="flex"
-                    alignItems="center"
-                    px={1.5}
-                    py={0.75}
-                    borderRadius={1}
-                    bgcolor={
-                        autoSaveStatus === 'saving' || autoSaveStatus === 'pending'
-                            ? '#fff3e0'
-                            : autoSaveStatus === 'saved'
-                                ? '#e8f5e9'
-                                : autoSaveStatus === 'error'
-                                    ? '#ffebee'
-                                    : '#f3f4f6'
-                    }
-                    border={
-                        autoSaveStatus === 'saving' || autoSaveStatus === 'pending'
-                            ? '1px solid #ffcc80'
-                            : autoSaveStatus === 'saved'
-                                ? '1px solid #a5d6a7'
-                                : autoSaveStatus === 'error'
-                                    ? '1px solid #ef9a9a'
-                                    : '1px solid #d1d5db'
-                    }
-                >
-                    <Typography variant="caption" fontWeight="bold" color={autoSaveStatus === 'error' ? 'error.main' : 'textSecondary'}>
-                        {autoSaveStatus === 'pending' && 'Авто-запазване: изчаква...'}
-                        {autoSaveStatus === 'saving' && 'Авто-запазване: записва...'}
-                        {autoSaveStatus === 'saved' && 'Авто-запазване: запазено'}
-                        {autoSaveStatus === 'error' && 'Авто-запазване: грешка'}
-                        {autoSaveStatus === 'idle' && 'Авто-запазване: изкл.'}
-                    </Typography>
-                </Box>
-
-                {SCHEDULE_PERF_DEBUG && (
-                    <Box
-                        display="flex"
-                        flexDirection="column"
-                        px={1.25}
-                        py={0.75}
-                        borderRadius={1}
-                        bgcolor="#eef2ff"
-                        border="1px dashed #94a3b8"
-                        minWidth={280}
-                    >
-                        <Typography variant="caption" fontWeight="bold" color="#334155">
-                            DEV perf
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                            Init interactive: {devPerf.initInteractiveMs}ms
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                            Monthly: {devPerf.monthlyLoadSource} ({devPerf.monthlyLoadMs}ms)
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                            Shift W/H: {devPerf.weekdayShiftSource}/{devPerf.holidayShiftSource} ({devPerf.weekdayShiftMs}/{devPerf.holidayShiftMs}ms)
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                            Prev month: {devPerf.previousMonthSource} ({devPerf.previousMonthMs}ms)
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                            Recalc: {devPerf.recalculationMs}ms
-                        </Typography>
-                    </Box>
-                )}
-
-                <Box flex={1} />
-                
-                <IconButton onClick={() => { void toggleFullscreen(); }} color="primary" title={isFullscreen ? "Изход от цял екран" : "Цял екран"}>
-                    {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
-                </IconButton>
-
-                <Button variant="contained" color="primary" onClick={handleSave}>
-                    Запази Промените
-                </Button>
-            </Box>
+            <ScheduleToolbar
+                record={record}
+                calendarStats={calendarStats}
+                showMatrixConfig={showMatrixConfig}
+                matrixData={matrixData}
+                selectedMatrixId={selectedMatrixId}
+                onSelectedMatrixIdChange={setSelectedMatrixId}
+                periods={periods}
+                onPeriodsChange={setPeriods}
+                matrixValidationColors={matrixValidationColors}
+                onMatrixValidationColorsChange={setMatrixValidationColors}
+                shiftScheduleOptions={shiftScheduleOptions}
+                weekdayShiftSchedule={weekdayShiftSchedule}
+                onWeekdayShiftScheduleChange={setWeekdayShiftSchedule}
+                holidayShiftSchedule={holidayShiftSchedule}
+                onHolidayShiftScheduleChange={setHolidayShiftSchedule}
+                linkPreviousMonthBalance={linkPreviousMonthBalance}
+                onLinkPreviousMonthBalanceChange={setLinkPreviousMonthBalance}
+                previousMonthStatus={previousMonthStatus}
+                previousMonthLabel={previousMonthLabel}
+                isRecalculating={isRecalculating}
+                isLoading={isLoading}
+                onOpenManage={handleOpenManage}
+                autoSaveStatus={autoSaveStatus}
+                devPerf={devPerf}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={toggleFullscreen}
+                onSave={handleSave}
+            />
             <Box></Box>
             <Box ref={containerRef} style={{ flex: 1, width: '100%', height: '100%', overflow: 'hidden', border: '1px solid #ddd' }} />
             
-            <Dialog open={isManageOpen} onClose={() => setIsManageOpen(false)} maxWidth="md" fullWidth>
-                <DialogTitle>Управление на служители</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ mb: 2, mt: 1, display: 'flex', gap: 1 }}>
-                        <Autocomplete
-                            sx={{ flex: 1 }}
-                            options={allEmployees}
-                            getOptionLabel={(option) => `${option.first_name} ${option.middle_name || ''} ${option.last_name}`}
-                            value={selectedEmp}
-                            onChange={(e, v) => setSelectedEmp(v)}
-                            renderInput={(params) => <TextField {...params} label="Избери служител за добавяне" />}
-                        />
-                        <Button onClick={handleAddEmployee} disabled={!selectedEmp} variant="contained">
-                            Добави
-                        </Button>
-                    </Box>
-                    <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>Включени в графика ({loadedEmployees.length})</Typography>
-                    <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
-                        <List dense>
-                            {loadedEmployees.map((emp) => (
-                                <ListItem key={emp.id} divider>
-                                    <ListItemText 
-                                        primary={emp.fullName || [emp.first_name, emp.middle_name, emp.last_name].filter(Boolean).join(' ')} 
-                                        secondary={`ID: ${emp.id}`}
-                                    />
-                                    <ListItemSecondaryAction>
-                                        <IconButton edge="end" aria-label="delete" onClick={() => handleRemoveEmployee(emp.id)} color="error">
-                                            <DeleteIcon />
-                                        </IconButton>
-                                    </ListItemSecondaryAction>
-                                </ListItem>
-                            ))}
-                        </List>
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setIsManageOpen(false)}>Затвори</Button>
-                </DialogActions>
-            </Dialog>
+            <ManageEmployeesDialog
+                open={isManageOpen}
+                onClose={() => setIsManageOpen(false)}
+                allEmployees={allEmployees}
+                loadedEmployees={loadedEmployees}
+                selectedEmp={selectedEmp}
+                onSelectedEmpChange={setSelectedEmp}
+                onAddEmployee={handleAddEmployee}
+                onRemoveEmployee={handleRemoveEmployee}
+            />
 
             </Box>
             </Box>

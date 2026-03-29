@@ -1,6 +1,6 @@
 import * as React from "react";
 import { HydraAdmin, ResourceGuesser, hydraDataProvider, fetchHydra } from "@api-platform/admin";
-import { CustomRoutes, Resource } from 'react-admin';
+import { CustomRoutes, defaultTheme } from 'react-admin';
 import { Route } from 'react-router-dom';
 import { getToken } from "../../jwt-frontend-auth/src/auth/authService";
 import authProvider from "./authProvider";
@@ -39,7 +39,6 @@ import {
 import { MatrixList, MatrixCreate, MatrixShow, MatrixEdit } from "./matrices";
 import { MonthlyScheduleList, MonthlyScheduleCreate, MonthlyScheduleEdit } from "./monthly_schedules";
 import { CalendarList, CalendarCreate, CalendarShow, CalendarEdit } from "./calendars";
-import { defaultTheme } from 'react-admin';
 import { TrainScheduleList } from "./train_schedules/TrainScheduleList";
 import { TrainScheduleCreate } from "./train_schedules/TrainScheduleCreate";
 import { TrainScheduleEdit } from "./train_schedules/TrainScheduleEdit";
@@ -50,6 +49,9 @@ import { TrainDiagramCreate } from "./train_diagrams/TrainDiagramCreate";
 import { TrainDiagramShow } from "./train_diagrams/TrainDiagramShow";
 import { PersonalAccountsList, PersonalAccountCreate, PersonalAccountEdit } from "./personal_accounts";
 import CustomLoginPage from "./CustomLoginPage";
+import { hasMinimumRole, ROLES } from "../../helpers/RoleMaper";
+
+import { ProfilePage } from "./ProfilePage";
 
 const AnyHydraAdmin: any = HydraAdmin;
 
@@ -280,6 +282,23 @@ const normalizeShiftScheduleDetailsPayload = (data: any) => {
 };
 
 const App = () => {
+  const token = getToken();
+  let tokenRoles: string[] = [];
+
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (Array.isArray(payload?.roles)) {
+        tokenRoles = payload.roles.filter((role: unknown): role is string => typeof role === 'string');
+      } else if (typeof payload?.roles === 'string') {
+        tokenRoles = [payload.roles];
+      }
+    } catch {
+      tokenRoles = [];
+    }
+  }
+
+  const isAdminOrSuperAdmin = hasMinimumRole(tokenRoles, ROLES.ADMIN);
  
   // Create dataProvider with authenticated fetch
   const baseDataProvider = hydraDataProvider({
@@ -326,7 +345,7 @@ const App = () => {
     >
       <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} edit={EmployeesEdit} show={EmployeesShow} />
       <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
-      <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />
+      {isAdminOrSuperAdmin && <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />}
       <ResourceGuesser
         name="shift_schedules"
         list={ShiftSchedulesList}
@@ -359,6 +378,7 @@ const App = () => {
         <Route path="/patterns/bulk-import" element={<PatternBulkImport />} />
         <Route path="/personal-accounts-period/:year/:month" element={<PersonalAccountsList />} />
         <Route path="/personal-accounts-period/:year/:month/:id" element={<PersonalAccountEdit />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </CustomRoutes>
     </AnyHydraAdmin>
   );

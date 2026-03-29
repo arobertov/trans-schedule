@@ -14,6 +14,17 @@ import { ROLES } from "../../../helpers/RoleMaper";
 
 const validateUsername = [required("Потребителското име е задължително"), minLength(3, "Минимум 3 символа")];
 const validatePassword = [required("Паролата е задължителна"), minLength(6, "Минимум 6 символа")];
+const validateConfirmPassword = (value: any, allValues: any) => {
+  if (!value) {
+    return "Потвърждението на паролата е задължително";
+  }
+
+  if (allValues.plainPassword && value !== allValues.plainPassword) {
+    return "Паролите не съвпадат";
+  }
+
+  return undefined;
+};
 const roleChoices = [
   { id: ROLES.SUPER_ADMIN, name: "Супер Администратор" },
   { id: ROLES.ADMIN, name: "Администратор" },
@@ -27,6 +38,15 @@ export const UsersCreate = () => {
   const notify = useNotify();
   const redirect = useRedirect();
 
+  const defaultValues = {
+    username: "",
+    firstName: "",
+    lastName: "",
+    plainPassword: "",
+    confirmPassword: "",
+    roles: [ROLES.USER],
+  };
+
   const onSuccess = () => {
     notify("Потребителят е създаден успешно");
     redirect("/users");
@@ -34,12 +54,13 @@ export const UsersCreate = () => {
 
   return (
     <Create mutationOptions={{ onSuccess }} title="Създаване на потребител">
-      <SimpleForm>
+      <SimpleForm defaultValues={defaultValues}>
         <TextInput 
           source="username" 
           label="Потребителско име" 
           validate={validateUsername}
           helperText="Минимум 3 символа"
+          autoComplete="new-username"
           fullWidth
         />
         <TextInput
@@ -57,6 +78,15 @@ export const UsersCreate = () => {
           label="Парола" 
           validate={validatePassword}
           helperText="Минимум 6 символа"
+          autoComplete="new-password"
+          fullWidth
+        />
+        <PasswordInput
+          source="confirmPassword"
+          label="Потвърди паролата"
+          validate={validateConfirmPassword}
+          helperText="Въведете паролата отново"
+          autoComplete="new-password"
           fullWidth
         />
         <SelectArrayInput
@@ -65,7 +95,6 @@ export const UsersCreate = () => {
           choices={roleChoices}
           optionText="name"
           optionValue="id"
-          defaultValue={[ROLES.USER]}
           helperText="Изберете една или повече роли"
           fullWidth
         />

@@ -68,9 +68,13 @@ const authProvider: AuthProvider = {
     
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
+      const firstName = typeof payload.firstName === 'string' ? payload.firstName.trim() : '';
+      const lastName = typeof payload.lastName === 'string' ? payload.lastName.trim() : '';
+      const composedFullName = `${firstName} ${lastName}`.trim();
+
       return Promise.resolve({
         id: payload.username || payload.sub,
-        fullName: payload.username || 'Admin User',
+        fullName: composedFullName || payload.username || payload.sub || 'Потребител',
       });
     } catch {
       return Promise.reject();
