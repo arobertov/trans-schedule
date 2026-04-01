@@ -282,24 +282,6 @@ const normalizeShiftScheduleDetailsPayload = (data: any) => {
 };
 
 const App = () => {
-  const token = getToken();
-  let tokenRoles: string[] = [];
-
-  if (token) {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      if (Array.isArray(payload?.roles)) {
-        tokenRoles = payload.roles.filter((role: unknown): role is string => typeof role === 'string');
-      } else if (typeof payload?.roles === 'string') {
-        tokenRoles = [payload.roles];
-      }
-    } catch {
-      tokenRoles = [];
-    }
-  }
-
-  const isAdminOrSuperAdmin = hasMinimumRole(tokenRoles, ROLES.ADMIN);
- 
   // Create dataProvider with authenticated fetch
   const baseDataProvider = hydraDataProvider({
     entrypoint: window.origin,
@@ -343,43 +325,51 @@ const App = () => {
       loginPage={CustomLoginPage}
       requireAuth
     >
-      <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} edit={EmployeesEdit} show={EmployeesShow} />
-      <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
-      {isAdminOrSuperAdmin && <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />}
-      <ResourceGuesser
-        name="shift_schedules"
-        list={ShiftSchedulesList}
-        create={ShiftSchedulesCreate}
-        edit={ShiftSchedulesEdit}
-        show={ShiftSchedulesShow}
-        recordRepresentation="name"
-        options={{ label: "График на смените" }}
-      />
-      <ResourceGuesser name="shift_schedule_details" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />
-      <ResourceGuesser name="order_patterns" list={PatternList} create={PatternCreate} edit={PatternEdit} show={PatternShow} />
-      <ResourceGuesser name="order_pattern_details" list={PatternDetailList} create={PatternDetailCreate} edit={PatternDetailEdit} />
-      <ResourceGuesser name="matrices" list={MatrixList} create={MatrixCreate} show={MatrixShow} edit={MatrixEdit} />
-      <ResourceGuesser name="monthly_schedules" list={MonthlyScheduleList} create={MonthlyScheduleCreate} edit={MonthlyScheduleEdit} />
-      <ResourceGuesser
-        name="personal_accounts"
-        list={PersonalAccountsList}
-        create={PersonalAccountCreate}
-        edit={PersonalAccountEdit}
-        options={{ label: "Лични сметки" }}
-      />
-      <ResourceGuesser name="calendars" list={CalendarList} create={CalendarCreate} edit={CalendarEdit} show={CalendarShow} />
-      <ResourceGuesser name="train_schedules" list={TrainScheduleList} create={TrainScheduleCreate} edit={TrainScheduleEdit} show={TrainScheduleShow} />
-      <ResourceGuesser name="train_schedule_lines" list={TrainScheduleLineList} />
-      <ResourceGuesser name="train_diagrams" list={TrainDiagramList} create={TrainDiagramCreate} show={TrainDiagramShow} />
+      {(permissions: unknown) => {
+        const isAdminOrSuperAdmin = hasMinimumRole(permissions, ROLES.ADMIN);
 
-      <CustomRoutes>
-        <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
-        <Route path="/shifts/bulk-import" element={<ShiftsBulkImport />} />
-        <Route path="/patterns/bulk-import" element={<PatternBulkImport />} />
-        <Route path="/personal-accounts-period/:year/:month" element={<PersonalAccountsList />} />
-        <Route path="/personal-accounts-period/:year/:month/:id" element={<PersonalAccountEdit />} />
-        <Route path="/profile" element={<ProfilePage />} />
-      </CustomRoutes>
+        return (
+          <>
+            <ResourceGuesser name="employees" list={EmployeesList} create={EmployeesCreate} edit={EmployeesEdit} show={EmployeesShow} />
+            <ResourceGuesser name="positions" list={PositionsList} show={PositionsShow} />
+            {isAdminOrSuperAdmin && <ResourceGuesser name="users" list={UsersList} create={UsersCreate} edit={UsersEdit} />}
+            <ResourceGuesser
+              name="shift_schedules"
+              list={ShiftSchedulesList}
+              create={ShiftSchedulesCreate}
+              edit={ShiftSchedulesEdit}
+              show={ShiftSchedulesShow}
+              recordRepresentation="name"
+              options={{ label: "График на смените" }}
+            />
+            <ResourceGuesser name="shift_schedule_details" list={ShiftsList} create={ShiftsCreate} edit={ShiftsEdit} show={ShiftsShow} />
+            <ResourceGuesser name="order_patterns" list={PatternList} create={PatternCreate} edit={PatternEdit} show={PatternShow} />
+            <ResourceGuesser name="order_pattern_details" list={PatternDetailList} create={PatternDetailCreate} edit={PatternDetailEdit} />
+            <ResourceGuesser name="matrices" list={MatrixList} create={MatrixCreate} show={MatrixShow} edit={MatrixEdit} />
+            <ResourceGuesser name="monthly_schedules" list={MonthlyScheduleList} create={MonthlyScheduleCreate} edit={MonthlyScheduleEdit} />
+            <ResourceGuesser
+              name="personal_accounts"
+              list={PersonalAccountsList}
+              create={PersonalAccountCreate}
+              edit={PersonalAccountEdit}
+              options={{ label: "Лични сметки" }}
+            />
+            <ResourceGuesser name="calendars" list={CalendarList} create={CalendarCreate} edit={CalendarEdit} show={CalendarShow} />
+            <ResourceGuesser name="train_schedules" list={TrainScheduleList} create={TrainScheduleCreate} edit={TrainScheduleEdit} show={TrainScheduleShow} />
+            <ResourceGuesser name="train_schedule_lines" list={TrainScheduleLineList} />
+            <ResourceGuesser name="train_diagrams" list={TrainDiagramList} create={TrainDiagramCreate} show={TrainDiagramShow} />
+
+            <CustomRoutes>
+              <Route path="/employees/bulk-import" element={<EmployeesBulkImport />} />
+              <Route path="/shifts/bulk-import" element={<ShiftsBulkImport />} />
+              <Route path="/patterns/bulk-import" element={<PatternBulkImport />} />
+              <Route path="/personal-accounts-period/:year/:month" element={<PersonalAccountsList />} />
+              <Route path="/personal-accounts-period/:year/:month/:id" element={<PersonalAccountEdit />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </CustomRoutes>
+          </>
+        );
+      }}
     </AnyHydraAdmin>
   );
 };
