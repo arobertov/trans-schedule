@@ -315,7 +315,7 @@ const App = () => {
   return (
     <AnyHydraAdmin
       entrypoint={window.origin}
-      title="API Platform Admin"
+      title="Платформа за планиране, изготвяне и управление на графици"
       dataProvider={dataProvider}
       authProvider={authProvider}
       dashboard={Dashboard}

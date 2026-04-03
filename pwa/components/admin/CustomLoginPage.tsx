@@ -1,4 +1,5 @@
 import * as React from 'react';
+import type { JSX } from 'react';
 import { useLogin, useNotify } from 'react-admin';
 import Link from 'next/link';
 import { getRegistrationAllowed, registrationToggleEvent } from '../../helpers/registrationSettings';
@@ -122,23 +123,16 @@ export const CustomLoginPage = () => {
         <p style={{ margin: 0, color: '#9fd6ff', fontSize: 36, fontWeight: 'bold', letterSpacing: '0.05em' }}>
           МЕТРОПОЛИТЕН ЕАД
         </p>
-        <h1
-          style={{
-            margin: '10px 0 6px',
-            fontSize: 32,
-            lineHeight: 1.05,
-            fontWeight: 900,
-            letterSpacing: '-0.02em',
-          }}
-        >
-          Вход в системата
-        </h1>
+
+        <p style={{ margin: '0 0 20px', color: '#d7e8ff', fontSize: 18, fontWeight: 500 }}>
+          Платформа за планиране, графици и оперативен контрол.
+        </p>
         <img
           src={companyLogoUrl}
           alt="Лого"
           style={{
-            width: 92,
-            height: 92,
+            width: 120,
+            height: 120,
             borderRadius: '50%',
             objectFit: 'cover',
             display: 'block',
@@ -147,11 +141,20 @@ export const CustomLoginPage = () => {
             boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
           }}
         />
-        <p style={{ margin: '0 0 20px', color: '#d7e8ff', fontSize: 15 }}>
-          Платформа за планиране, графици и оперативен контрол.
-        </p>
+        <h2
+          style={{
+            margin: '10px 0 6px',
+            fontSize: 32,
+            lineHeight: 1.05,
+            fontWeight: 900,
+            letterSpacing: '-0.02em',
+          }}
+        > Вход в системата
+        </h2>
 
-        <form onSubmit={onSubmit}>
+
+        <div>
+          <form onSubmit={onSubmit}>
           <div style={{ marginBottom: 14 }}>
             <label htmlFor="login-username" style={labelStyle}>
               Потребителско име
@@ -206,6 +209,7 @@ export const CustomLoginPage = () => {
             </p>
           )}
         </form>
+        </div>
       </section>
     </main>
   );
