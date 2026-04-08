@@ -31,7 +31,7 @@ final class ScheduleParser
         /** @var TrainScheduleLine $line */
         foreach ($schedule->getLines() as $line) {
             $trainNumber = $line->getTrainNumber();
-            $station = trim($line->getStationTrack());
+            $station = $this->normalizeStation(trim($line->getStationTrack()));
 
             // Use arrival_time if available, otherwise departure_time
             $arrival = $line->getArrivalTime();
@@ -99,7 +99,7 @@ final class ScheduleParser
         }
 
         // Multiple segments
-        $suffixMap = [0 => '-morning', 1 => '-evening', 2 => '-night'];
+        $suffixMap = [0 => '-сутрин', 1 => '-следобед', 2 => '-нощен'];
         $groups = [];
         $start = 0;
         foreach ($breakIndices as $bi) {
@@ -124,6 +124,21 @@ final class ScheduleParser
         }
 
         return $segments;
+    }
+
+    /**
+     * Normalize depot station name: handles case-insensitive Latin (Depo, Depot),
+     * Cyrillic (Депо) and mixed-case variants → canonical 'Depo'.
+     */
+    private function normalizeStation(string $station): string
+    {
+        $lower = mb_strtolower($station, 'UTF-8');
+
+        if ($lower === 'depo' || $lower === 'depot' || $lower === 'депо') {
+            return 'Depo';
+        }
+
+        return $station;
     }
 
     /**

@@ -55,7 +55,7 @@ const DEFAULTS = {
   max_day_minutes: 660,
   max_night_minutes: 660,
   min_morning_minutes: 180,
-  min_day_minutes: 480,
+  min_day_minutes: 540,
   min_night_minutes: 480,
   morning_threshold: "09:30",
   morning_station14_threshold: "07:30",

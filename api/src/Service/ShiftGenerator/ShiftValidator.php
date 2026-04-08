@@ -10,26 +10,29 @@ use App\Dto\ShiftGenerator\GenerationParameters;
 use App\Dto\ShiftGenerator\ValidationResult;
 
 /**
- * Port of python_shift_generator/validator.py
+ * Валидатор на генерирания график на смените (порт от python_shift_generator/validator.py).
  *
- * Validates the generated shift schedule against the SAME dynamic limits
- * the user chose for generation.
+ * Проверява генерираните смени спрямо СЪЩИТЕ динамични лимити,
+ * които потребителят е избрал при генерирането.
  *
- * 7 checks:
- *  1. All driving blocks <= max_drive
- *  2. All rest periods >= min_rest
- *  3. Morning shift total <= max_morning
- *  4. Day/Night shift total <= max_day/max_night
- *  5. 100% route coverage (every block assigned exactly once)
- *  6. No overlapping assignments
- *  7. All crew changes at crew-change station or route endpoint (depot)
+ * Извършва 7 проверки:
+ *  1. Всички блокове за управление ≤ max_drive (макс. непрекъснато управление)
+ *  2. Всички почивки между блокове ≥ min_rest (мин. почивка)
+ *  3. Продължителност на сутрешна смяна ≤ max_morning
+ *  4. Продължителност на дневна/нощна смяна ≤ max_day / max_night
+ *  5. 100% покритие на маршрутите (всеки блок присвоен точно веднъж)
+ *  6. Без припокриващи се присвоявания (дублиращи блокове)
+ *  7. Всички смени на екипаж на станция за оборот или крайна точка (депо)
  */
 final class ShiftValidator
 {
     /**
-     * @param GeneratedShift[]     $shifts
-     * @param DrivingBlock[]       $allBlocks
-     * @param GenerationParameters $params
+     * Основен метод: изпълнява всички валидационни проверки.
+     *
+     * @param GeneratedShift[]     $shifts    Генерираните смени
+     * @param DrivingBlock[]       $allBlocks Всички блокове (от BlockGenerator)
+     * @param GenerationParameters $params    Параметри на генерирането
+     * @return ValidationResult              Резултат с грешки и предупреждения
      */
     public function validate(array $shifts, array $allBlocks, GenerationParameters $params): ValidationResult
     {
@@ -44,6 +47,13 @@ final class ShiftValidator
         return $result;
     }
 
+    /**
+     * Проверка 1: Макс. непрекъснато управление.
+     *
+     * За всеки блок във всяка смяна проверява дали времето за управление
+     * (от качване до слизане) не превишава max_drive_minutes.
+     * Ако всичко е наред — записва OK съобщение в warnings.
+     */
     private function checkDriveTime(array $shifts, GenerationParameters $params, ValidationResult $result): void
     {
         $maxDrive = $params->maxDriveSeconds();
@@ -68,6 +78,17 @@ final class ShiftValidator
         }
     }
 
+    /**
+     * Проверка 2: Мин. почивка между блокове.
+     *
+     * За всяка двойка последователни блокове в смяна проверява дали
+     * времето между слизане и следващо качване е ≥ min_rest_minutes.
+     *
+     * Изключение: кръстосан преход (cross-train handoff) — когато два блока
+     * от РАЗЛИЧНИ влакове са на една и съща базова станция (без Depo) и
+     * интервалът е в рамките на cross_train_handoff_minutes, почивката
+     * може да е по-кратка.
+     */
     private function checkRestPeriods(array $shifts, GenerationParameters $params, ValidationResult $result): void
     {
         $minRest = $params->minRestSeconds();
@@ -80,13 +101,14 @@ final class ShiftValidator
                 $next = $entries[$i + 1]->block;
                 $rest = $next->boardTime - $curr->alightTime;
 
-                // Cross-train handoff: different trains, same base station, not Depo — shorter gap is OK.
+                // Кръстосан преход: различни влакове, същата базова станция, не Depo —
+                // по-кратък интервал е допустим
                 if ($curr->train !== $next->train) {
                     $baseAlight = GenerationParameters::stationBase($curr->alightStation);
                     $baseBoard  = GenerationParameters::stationBase($next->boardStation);
                     if ($baseAlight !== 'Depo' && $baseAlight === $baseBoard
                         && $rest <= $params->crossTrainHandoffSeconds() && $rest >= 0) {
-                        continue; // valid cross-train handoff — skip min rest check
+                        continue; // Валиден кръстосан преход — пропускаме проверката за min_rest
                     }
                 }
 
@@ -107,6 +129,15 @@ final class ShiftValidator
         }
     }
 
+    /**
+     * Проверка 3+4: Продължителност на смените (максимум и минимум).
+     *
+     * За всяка смяна проверява:
+     *  - Максимум: дали общата продължителност не превишава лимита за типа
+     *    (max_morning / max_day / max_night) → генерира грешка (error)
+     *  - Минимум: дали общата продължителност не е под минималния праг
+     *    (min_morning / min_day / min_night) → генерира предупреждение (warning)
+     */
     private function checkShiftDurations(array $shifts, GenerationParameters $params, ValidationResult $result): void
     {
         $allOk = true;
@@ -114,7 +145,7 @@ final class ShiftValidator
         foreach ($shifts as $s) {
             $dur = $s->totalDuration();
 
-            // Maximum checks
+            // ── Проверки за максимум ──
             if ($s->shiftType === GeneratedShift::TYPE_MORNING && $dur > $params->maxMorningSeconds()) {
                 $result->error(sprintf(
                     '%s: сутрешна смяна %s > %d:%02d',
@@ -138,7 +169,7 @@ final class ShiftValidator
                 $allOk = false;
             }
 
-            // Minimum checks
+            // ── Проверки за минимум ──
             if ($s->shiftType === GeneratedShift::TYPE_MORNING && $dur < $params->minMorningSeconds()) {
                 $result->warn(sprintf(
                     'WARN %s: сутрешна смяна (%s) е под минимума %d:%02d',
@@ -165,9 +196,18 @@ final class ShiftValidator
         }
     }
 
+    /**
+     * Проверки 5+6: Покритие на маршрутите и дублирани присвоявания.
+     *
+     * Изгражда карта на присвояванията (ключ = "routeId:blockIndex" → shiftId)
+     * и проверява:
+     *  - Няма ли блок, присвоен на повече от една смяна (дубликат → error)
+     *  - Всички блокове от BlockGenerator са ли присвоени (пропуснат → error)
+     *  - Няма ли непознати блокове, присвоени (extra → error)
+     */
     private function checkCoverage(array $shifts, array $allBlocks, ValidationResult $result): void
     {
-        // Build assignments map
+        // Изграждаме карта: ключ на блока → id на смяната, към която е присвоен
         $assigned = [];
         $duplicateErrors = false;
 
@@ -191,12 +231,13 @@ final class ShiftValidator
             $result->warn('OK Няма дублирани присвоявания');
         }
 
-        // Check all blocks are assigned
+        // Проверяваме дали всички блокове от BlockGenerator са присвоени
         $allBlockKeys = [];
         foreach ($allBlocks as $b) {
             $allBlockKeys[$b->routeId . ':' . $b->blockIndex] = true;
         }
 
+        // Липсващи блокове: генерирани от BlockGenerator, но неприсвоени
         $missing = array_diff_key($allBlockKeys, $assigned);
         if (!empty($missing)) {
             foreach (array_keys($missing) as $key) {
@@ -206,12 +247,23 @@ final class ShiftValidator
             $result->warn('OK 100%% покритие на маршрутите (без пропуски)');
         }
 
+        // Излишни блокове: присвоени, но не съществуват в оригиналния списък
         $extra = array_diff_key($assigned, $allBlockKeys);
         foreach (array_keys($extra) as $key) {
             $result->error(sprintf('Непознат блок присвоен: %s', $key));
         }
     }
 
+    /**
+     * Проверка 7: Смени на екипаж на допустими станции.
+     *
+     * За всеки вътрешен преход между блокове (не първи/последен в смяната)
+     * проверява дали качването/слизането е на:
+     *  а) станция за оборот (crew-change), ИЛИ
+     *  б) начална/крайна точка на маршрута (депо), ИЛИ
+     *  в) валиден кръстосан преход (cross-train handoff) — същата базова
+     *     станция, различен влак, в рамките на допустимия интервал
+     */
     private function checkCrewChanges(array $shifts, GenerationParameters $params, ValidationResult $result): void
     {
         $allOk = true;
@@ -224,12 +276,13 @@ final class ShiftValidator
             for ($i = 0; $i < $count; $i++) {
                 $b = $entries[$i]->block;
 
-                // Check boarding point (for blocks after the first)
+                // Проверка на точката на качване (за блокове след първия)
                 if ($i > 0) {
                     $prev = $entries[$i - 1]->block;
                     $boardOk = $b->canCrewChangeAtBoard($stations) || $b->isBoardAtRouteEndpoint();
 
-                    // Cross-train handoff: same base station (ignoring track №), not Depo, within time limit
+                    // Кръстосан преход: същата базова станция (без номер коловоз),
+                    // не Depo, в рамките на допустимия интервал
                     if (!$boardOk) {
                         $gap = $b->boardTime - $prev->alightTime;
                         $boardOk = GenerationParameters::stationBase($prev->alightStation) !== 'Depo'
@@ -246,12 +299,12 @@ final class ShiftValidator
                     }
                 }
 
-                // Check alighting point (for blocks before the last)
+                // Проверка на точката на слизане (за блокове преди последния)
                 if ($i < $count - 1) {
                     $next = $entries[$i + 1]->block;
                     $alightOk = $b->canCrewChangeAtAlight($stations) || $b->isAlightAtRouteEndpoint();
 
-                    // Cross-train handoff
+                    // Кръстосан преход
                     if (!$alightOk) {
                         $gap = $next->boardTime - $b->alightTime;
                         $alightOk = GenerationParameters::stationBase($b->alightStation) !== 'Depo'
@@ -275,6 +328,12 @@ final class ShiftValidator
         }
     }
 
+    /**
+     * Форматира продължителност в секунди като „Ч:ММ" низ.
+     *
+     * @param int $seconds Продължителност в секунди
+     * @return string      Форматиран низ, напр. „2:30", „11:00"
+     */
     private static function formatDuration(int $seconds): string
     {
         $h = intdiv($seconds, 3600);
