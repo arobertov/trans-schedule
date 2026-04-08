@@ -18,6 +18,9 @@ import { ShiftSchedulesList } from "./shift_schedules/ShiftSchedulesList";
 import { ShiftSchedulesCreate } from "./shift_schedules/ShiftSchedulesCreate";
 import { ShiftSchedulesEdit } from "./shift_schedules/ShiftSchedulesEdit";
 import { ShiftSchedulesShow } from "./shift_schedules/ShiftSchedulesShow";
+import { ShiftScheduleGenerator } from "./shift_schedules/ShiftScheduleGenerator";
+import { DraftShiftSchedule } from "./shift_schedules/DraftShiftSchedule";
+import { DraftSchedulesList } from "./shift_schedules/DraftSchedulesList";
 import { Dashboard } from "./Dashboard";
 import { UsersList } from "./users/UsersList";
 import { UsersCreate } from "./users/UsersCreate";
@@ -366,6 +369,9 @@ const App = () => {
               <Route path="/personal-accounts-period/:year/:month" element={<PersonalAccountsList />} />
               <Route path="/personal-accounts-period/:year/:month/:id" element={<PersonalAccountEdit />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/shift-schedules/generate" element={<ShiftScheduleGenerator />} />
+              <Route path="/shift-schedules/drafts" element={<DraftSchedulesList />} />
+              <Route path="/shift-schedules/draft/:id" element={<DraftShiftSchedule />} />
             </CustomRoutes>
           </>
         );

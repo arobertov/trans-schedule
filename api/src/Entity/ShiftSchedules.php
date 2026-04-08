@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use App\Repository\ShiftSchedulesRepository;
+use App\Enum\ShiftScheduleStatus;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
@@ -38,7 +39,8 @@ use Symfony\Component\Validator\Constraints as Assert;
     ]
 )]
 #[ApiFilter(SearchFilter::class, properties: [
-    'name' => 'partial'
+    'name' => 'partial',
+    'status' => 'exact'
 ])]
 #[ORM\HasLifecycleCallbacks]
 class ShiftSchedules
@@ -102,6 +104,14 @@ class ShiftSchedules
         writable: false
     )]
     private ?\DateTimeImmutable $updated_at = null;
+
+    #[ORM\Column(length: 20, enumType: ShiftScheduleStatus::class)]
+    #[Groups(['schedule:read', 'schedule:write'])]
+    #[ApiProperty(
+        description: 'Статус на графика (проект/активен)',
+        example: 'проект'
+    )]
+    private ShiftScheduleStatus $status = ShiftScheduleStatus::Draft;
 
     public function __construct()
     {
@@ -183,5 +193,16 @@ class ShiftSchedules
     public function setUpdatedAtValue(): void
     {
         $this->updated_at = new \DateTimeImmutable();
+    }
+
+    public function getStatus(): ShiftScheduleStatus
+    {
+        return $this->status;
+    }
+
+    public function setStatus(ShiftScheduleStatus $status): static
+    {
+        $this->status = $status;
+        return $this;
     }
 }

@@ -13,6 +13,8 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import TrainIcon from '@mui/icons-material/Train';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import DraftsIcon from '@mui/icons-material/Drafts';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { useCan, ROLES } from '../../helpers/RoleMaper';
 
@@ -80,6 +82,18 @@ export const CustomMenu = () => {
             to="/shift_schedule_details"
             primaryText="Смени"
             leftIcon={<ViewWeekIcon />}
+            sx={{ pl: 4 }}
+          />
+          <MenuItemLink
+            to="/shift-schedules/generate"
+            primaryText="Генериране на смени"
+            leftIcon={<AutoFixHighIcon />}
+            sx={{ pl: 4 }}
+          />
+          <MenuItemLink
+            to="/shift-schedules/drafts"
+            primaryText="Проектографици"
+            leftIcon={<DraftsIcon />}
             sx={{ pl: 4 }}
           />
         </List>

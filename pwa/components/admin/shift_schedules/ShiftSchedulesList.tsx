@@ -1,5 +1,5 @@
-import { List, Datagrid, useListContext, useRecordContext, TopToolbar, CreateButton, Button, TextField, DateField } from "react-admin";
-import { Box, Typography } from '@mui/material';
+import { List, Datagrid, useListContext, useRecordContext, TopToolbar, CreateButton, Button, TextField, DateField, FunctionField } from "react-admin";
+import { Box, Chip, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import UploadIcon from '@mui/icons-material/Upload';
 
@@ -48,6 +48,14 @@ export const ShiftSchedulesList = () => (
             <RowNumberField />
             <TextField source="name" label="Име на графика за смените" />
             <TextField source="description" label="Описание на графика за смените" />
+            <FunctionField
+              label="Статус"
+              render={(record: any) => {
+                const status = record?.status;
+                if (status === "активен") return <Chip label="Активен" color="success" size="small" />;
+                return <Chip label="Проект" color="warning" size="small" />;
+              }}
+            />
             <DateField source="created_at" label="Създаден на" showTime />
         </Datagrid>
     </List>
