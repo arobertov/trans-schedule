@@ -56,6 +56,22 @@ final class GenerationResult
             $preview[] = $shift->toPreviewArray();
         }
 
+        $allBlocks = [];
+        foreach ($this->blocks as $b) {
+            $allBlocks[] = [
+                'route_id' => $b->routeId,
+                'train' => $b->train,
+                'block_index' => $b->blockIndex,
+                'board_station' => $b->boardStation,
+                'board_time' => $b->boardTimeStr(),
+                'alight_station' => $b->alightStation,
+                'alight_time' => $b->alightTimeStr(),
+                'drive_time' => $b->driveStr(),
+                'route_start_station' => $b->routeStartStation,
+                'route_end_station' => $b->routeEndStation,
+            ];
+        }
+
         $unassigned = [];
         foreach ($this->unassignedBlocks as $b) {
             $unassigned[] = [
@@ -74,6 +90,8 @@ final class GenerationResult
             'morning_count' => $this->morningCount(),
             'day_count' => $this->dayCount(),
             'night_count' => $this->nightCount(),
+            'blocks_count' => \count($this->blocks),
+            'blocks' => $allBlocks,
             'validation' => $this->validation->toArray(),
             'shifts_preview' => $preview,
             'unassigned_blocks' => $unassigned,

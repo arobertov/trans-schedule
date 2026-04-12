@@ -50,16 +50,19 @@ import { getToken } from "../../../jwt-frontend-auth/src/auth/authService";
 // ─── Defaults matching the Python algorithm ───
 const DEFAULTS = {
   max_drive_minutes: 150,
+  min_drive_minutes: 60,
   min_rest_minutes: 50,
-  max_morning_minutes: 300,
+  max_morning_minutes: 330,
   max_day_minutes: 660,
   max_night_minutes: 660,
   min_morning_minutes: 180,
   min_day_minutes: 540,
   min_night_minutes: 480,
   morning_threshold: "09:30",
-  morning_station14_threshold: "07:30",
   night_threshold: "18:00",
+  morning_end_time: "09:50",
+  day_start_time: "08:00",
+  day_end_time: "19:40",
   day_target_minutes: 540,
   cross_train_handoff_minutes: 20,
   doctor_offset_minutes: 60,
@@ -383,7 +386,7 @@ export const ShiftScheduleGenerator = () => {
           </AccordionSummary>
           <AccordionDetails>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
                   type="number"
@@ -394,7 +397,18 @@ export const ShiftScheduleGenerator = () => {
                   inputProps={{ min: 1, max: 600 }}
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Мин. непрекъснато управление (мин)"
+                  value={params.min_drive_minutes}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("min_drive_minutes", parseInt(e.target.value, 10) || 0)}
+                  helperText={`= ${minutesToHMM(params.min_drive_minutes)} (желан мин. блок)`}
+                  inputProps={{ min: 0, max: 600 }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
                   type="number"
@@ -540,21 +554,49 @@ export const ShiftScheduleGenerator = () => {
               <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
-                  label="Праг ранен ст.14 стартер"
-                  value={params.morning_station14_threshold}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("morning_station14_threshold", e.target.value)}
-                  placeholder="HH:MM"
-                  helperText="Стартери от ст.14 преди този час"
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
                   label="Праг нощна (начало от)"
                   value={params.night_threshold}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("night_threshold", e.target.value)}
                   placeholder="HH:MM"
                   helperText="Блокове след този час са нощни"
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Часови граници на смените
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Сутрешна: край до"
+                  value={params.morning_end_time}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("morning_end_time", e.target.value)}
+                  placeholder="HH:MM"
+                  helperText="Сутрешна смяна свършва най-късно до"
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Дневна: начало от"
+                  value={params.day_start_time}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("day_start_time", e.target.value)}
+                  placeholder="HH:MM"
+                  helperText="Дневна смяна започва най-рано от"
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="Дневна: край до"
+                  value={params.day_end_time}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("day_end_time", e.target.value)}
+                  placeholder="HH:MM"
+                  helperText="Дневна смяна свършва най-късно до"
                 />
               </Grid>
 
@@ -617,14 +659,14 @@ export const ShiftScheduleGenerator = () => {
                   Междувлаков преход
                 </Typography>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   type="number"
                   label="Макс. време за преход (мин)"
                   value={params.cross_train_handoff_minutes}
                   onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("cross_train_handoff_minutes", parseInt(e.target.value, 10) || 0)}
-                  helperText="Макс. разлика между край и начало на два влака за слепване в една смяна"
+                  helperText="Макс. интервал за смяна на влак без прекъсване на управлението (с едно качване — два влака)"
                   inputProps={{ min: 0, max: 120 }}
                 />
               </Grid>

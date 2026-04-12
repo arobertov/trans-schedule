@@ -62,11 +62,74 @@ final class GeneratedShift
     }
 
     /**
+     * Compute the continuous driving time from the end of the shift backwards,
+     * including all blocks chained via cross-train handoffs.
+     *
+     * Cross-train handoffs do NOT break continuous driving — the driver switches
+     * trains without a real rest break (с едно качване кара два влака).
+     * Only a gap > crossTrainHandoffSeconds (or same-train gap with full rest)
+     * counts as a real break in the driving chain.
+     */
+    public function continuousDriveChainFromEnd(GenerationParameters $params): int
+    {
+        if (empty($this->entries)) {
+            return 0;
+        }
+
+        $total = 0;
+        for ($i = \count($this->entries) - 1; $i >= 0; $i--) {
+            $block = $this->entries[$i]->block;
+            $total += $block->driveDuration();
+
+            if ($i > 0) {
+                $prev = $this->entries[$i - 1]->block;
+                $gap = $block->boardTime - $prev->alightTime;
+
+                $isCross = $prev->train !== $block->train
+                    && GenerationParameters::stationBase($prev->alightStation) !== 'Depo'
+                    && GenerationParameters::stationBase($prev->alightStation) === GenerationParameters::stationBase($block->boardStation)
+                    && $gap >= 0
+                    && $gap <= $params->crossTrainHandoffSeconds();
+
+                if ($isCross) {
+                    // Handoff gap counts toward driving time
+                    $total += $gap;
+                    continue;
+                }
+                // Real rest — stop the chain
+                break;
+            }
+        }
+
+        return $total;
+    }
+
+    /**
      * Check whether a given block can be added to this shift respecting
-     * rest, crew-change, and duration constraints.
+     * rest, crew-change, duration, and time-boundary constraints.
+     *
+     * Cross-train handoff semantics: when a driver switches trains at a terminal
+     * station without a real break, the handoff does NOT interrupt continuous
+     * driving time. The total continuous drive chain must stay ≤ maxDrive.
      */
     public function canAddBlock(DrivingBlock $block, GenerationParameters $params): bool
     {
+        // ── Shift time-boundary enforcement (applies to ALL blocks incl. first) ──
+        // Morning shift must end by the morning deadline
+        if ($this->shiftType === self::TYPE_MORNING
+            && $block->alightTime > $params->morningEndTimeSeconds) {
+            return false;
+        }
+        // Day shift: first block must start at/after day start; any block must end by day end
+        if ($this->shiftType === self::TYPE_DAY) {
+            if (!$this->entries && $block->boardTime < $params->dayStartTimeSeconds) {
+                return false;
+            }
+            if ($block->alightTime > $params->dayEndTimeSeconds) {
+                return false;
+            }
+        }
+
         if (!$this->entries) {
             return true;
         }
@@ -91,15 +154,20 @@ final class GeneratedShift
             }
         }
 
-        // For normal (same-train) handoffs enforce minimum rest period.
-        // Cross-train handoffs only require gap >= 0 (already checked above).
-        if (!$isCrossTrain && $gap < $params->minRestSeconds()) {
-            return false;
-        }
+        if ($isCrossTrain) {
+            // Cross-train handoff: NOT a rest break — driving is continuous.
+            // Check that the continuous drive chain doesn't exceed maxDrive.
+            $chainDrive = $this->continuousDriveChainFromEnd($params) + $gap + $block->driveDuration();
+            if ($chainDrive > $params->maxDriveSeconds()) {
+                return false;
+            }
+        } else {
+            // Normal transition: enforce minimum rest period
+            if ($gap < $params->minRestSeconds()) {
+                return false;
+            }
 
-        // Station handoff: crew-change station or route endpoint (depot).
-        // Cross-train handoffs skip this — the base-station match is sufficient.
-        if (!$isCrossTrain) {
+            // Station handoff: crew-change station or route endpoint (depot)
             $stations = $params->crewChangeStations;
             $boardOk  = $block->canCrewChangeAtBoard($stations) || $block->isBoardAtRouteEndpoint();
             $alightOk = $last->canCrewChangeAtAlight($stations) || $last->isAlightAtRouteEndpoint();

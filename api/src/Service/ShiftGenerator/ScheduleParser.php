@@ -127,11 +127,15 @@ final class ScheduleParser
     }
 
     /**
-     * Normalize depot station name: handles case-insensitive Latin (Depo, Depot),
-     * Cyrillic (Депо) and mixed-case variants → canonical 'Depo'.
+     * Normalize station name:
+     * - Strips leading terminal markers (> for first stop, < for last stop)
+     * - Normalizes depot variants → canonical 'Depo'
      */
     private function normalizeStation(string $station): string
     {
+        // Strip terminal markers added by the schedule data
+        $station = ltrim($station, '><');
+
         $lower = mb_strtolower($station, 'UTF-8');
 
         if ($lower === 'depo' || $lower === 'depot' || $lower === 'депо') {

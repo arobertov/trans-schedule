@@ -70,8 +70,9 @@ final class BlockGenerator
             return [];
         }
 
-        // Максимално допустимо време за непрекъснато управление (в секунди)
+        // Максимално и минимално допустимо време за непрекъснато управление (в секунди)
         $maxDrive = $params->maxDriveSeconds();
+        $minDrive = $params->minDriveSeconds();
 
         // Индекс на последната спирка — използва се за проверка дали сме стигнали края
         $lastIdx = \count($stops) - 1;
@@ -123,12 +124,17 @@ final class BlockGenerator
             // Ако намерената крайна спирка НЕ е станция за оборот и НЕ е последната
             // спирка на маршрута, търсим назад за по-близка crew-change станция.
             // Целта: блоковете да завършват на станция, където може да стане смяна на екипаж.
+            // При наличие на minDrive, предпочитаме блокове с продължителност >= minDrive.
             if (!$params->isCrewChangeStation($endStop->station) && $bestEndIdx !== $lastIdx) {
                 for ($i = $bestEndIdx - 1; $i > $startIdx; $i--) {
                     if ($params->isCrewChangeStation($stops[$i]->station)) {
-                        $bestEndIdx = $i;
-                        $endStop = $stops[$i];
-                        break;
+                        $candidateDur = $stops[$i]->time - $startStop->time;
+                        // Предпочитаме crew-change станция, която дава блок >= minDrive
+                        if ($candidateDur >= $minDrive || $i === $startIdx + 1) {
+                            $bestEndIdx = $i;
+                            $endStop = $stops[$i];
+                            break;
+                        }
                     }
                 }
             }

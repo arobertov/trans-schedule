@@ -12,7 +12,7 @@ use App\Dto\ShiftGenerator\GenerationParameters;
  * Разпределител на блокове към смени (порт от python_shift_generator/shift_scheduler.py).
  *
  * Присвоява блокове за управление (DrivingBlock) към смени (GeneratedShift)
- * чрез 5-фазен „greedy" (алчен) алгоритъм. Всички прагове и лимити идват
+ * чрез 6-фазен „greedy" (алчен) алгоритъм. Всички прагове и лимити идват
  * от GenerationParameters (динамични, зададени от потребителя).
  *
  * Фази на алгоритъма:
@@ -21,11 +21,14 @@ use App\Dto\ShiftGenerator\GenerationParameters;
  *   Фаза 2: Изграждане на сутрешни смени (точен брой, ако е зададен)
  *   Фаза 3: Изграждане на нощни смени (точен брой, ако е зададен)
  *   Фаза 4: Изграждане на дневни смени от оставащите блокове (точен брой, ако е зададен)
+ *   Фаза 5: Обхващане — остатъчни блокове: А) добавяне към съществуващи смени,
+ *            Б) нови смени с тип, съобразен с целевите бройки
  *
- * Кръстосано свързване на влакове (cross-train chaining):
- *   Блокове от различни влакове могат да се комбинират в една смяна, когато
- *   споделят една и съща базова станция (без номер на коловоз) и времевият
- *   интервал е в рамките на cross_train_handoff_minutes.
+ * Междувлаков преход (cross-train handoff):
+ *   Машинист може да слезе от един влак и да се качи на друг без прекъсване
+ *   на управлението (с едно качване кара два влака). Интервалът между слизане
+ *   и качване трябва да е ≤ cross_train_handoff_minutes. Управлението е
+ *   непрекъснато (не е почивка) — общата верига трябва да е ≤ max_drive.
  */
 final class ShiftAssigner
 {
@@ -202,21 +205,10 @@ final class ShiftAssigner
 
         /**
          * Дали блокът е кандидат за сутрешна смяна.
-         * Условия:
-         *  - Времето на качване е преди сутрешния праг (morning_threshold)
-         *  - Ако блокът тръгва от депо/крайна точка — винаги е кандидат
-         *  - Ако тръгва от станция за оборот (напр. ст.14) — само ако е преди
-         *    ранния праг за ст.14 (morning_station14_threshold)
+         * Условие: времето на качване е преди сутрешния праг (morning_threshold).
          */
         $isMorningCandidate = function (DrivingBlock $b) use ($params): bool {
-            if ($b->boardTime >= $params->morningThresholdSeconds) {
-                return false;
-            }
-            if (!$params->isCrewChangeStation($b->boardStation) || $b->isBoardAtRouteEndpoint()) {
-                return true; // Тръгва от депо или крайна точка на маршрута
-            }
-
-            return $b->boardTime < $params->morningStation14ThresholdSeconds;
+            return $b->boardTime < $params->morningThresholdSeconds;
         };
 
         /**
@@ -297,6 +289,11 @@ final class ShiftAssigner
             }
 
             // Създаваме нова сутрешна смяна с началния блок
+            // Пропускаме блок, ако надхвърля часовата граница за сутрешна смяна
+            if ($mb->alightTime > $params->morningEndTimeSeconds) {
+                continue;
+            }
+
             $s = $newShift(GeneratedShift::TYPE_MORNING);
             $s->addBlock($mb);
             $processedMorningKeys[$key] = true;
@@ -385,8 +382,22 @@ final class ShiftAssigner
                 $a->boardTime <=> $b->boardTime ?: strcmp($a->routeId, $b->routeId)
             );
 
-            // Създаваме нова дневна смяна с най-ранния оставащ блок
-            $first = $daySorted[0];
+            // Намираме първи блок, който се вписва в часовите граници на дневна смяна
+            $first = null;
+            foreach ($daySorted as $candidate) {
+                if ($candidate->boardTime >= $params->dayStartTimeSeconds
+                    && $candidate->alightTime <= $params->dayEndTimeSeconds) {
+                    $first = $candidate;
+                    break;
+                }
+            }
+
+            // Ако няма подходящ блок — спираме; остатъкът става неприсвоен
+            if ($first === null) {
+                break;
+            }
+
+            // Създаваме нова дневна смяна с подходящия блок
             $s = $newShift(GeneratedShift::TYPE_DAY);
             $s->addBlock($first);
             $popBlock($first);
@@ -435,6 +446,120 @@ final class ShiftAssigner
             }
 
             $shifts[] = $s;
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // ── Фаза 5: Обхващане на остатъчни блокове (sweep) ───────────
+        // ══════════════════════════════════════════════════════════════════
+        // Всички блокове, непокрити от предишните фази, се присвояват тук.
+        //
+        // Стъпка А: Опит за добавяне към съществуващи смени (предпочитан —
+        // така се спазват зададените целеви бройки по-добре).
+        //
+        // Стъпка Б: Ако блокът не пасва в никоя съществуваща смяна, създава
+        // се нова. Типът се определя от времето на качване.
+        if (!empty($unassigned)) {
+            // ── Стъпка А: добавяне към съществуващи смени ──
+            $sweepSorted = array_values($unassigned);
+            usort($sweepSorted, fn(DrivingBlock $a, DrivingBlock $b) => $a->boardTime <=> $b->boardTime);
+
+            foreach ($sweepSorted as $sb) {
+                if (!isset($unassigned[spl_object_id($sb)])) {
+                    continue;
+                }
+
+                // Опитваме всяка съществуваща смяна — предпочитаме тази, чийто
+                // край е най-близък до началото на блока (минимален gap).
+                $bestShift = null;
+                $bestGap = PHP_INT_MAX;
+                foreach ($shifts as $existingShift) {
+                    if ($existingShift->canAddBlock($sb, $params)) {
+                        $g = $sb->boardTime - $existingShift->endTime();
+                        if ($g < $bestGap) {
+                            $bestGap = $g;
+                            $bestShift = $existingShift;
+                        }
+                    }
+                }
+
+                if ($bestShift !== null) {
+                    $bestShift->addBlock($sb);
+                    $popBlock($sb);
+                }
+            }
+
+            // ── Стъпка Б: нови смени за наистина неприсвоимите блокове ──
+            if (!empty($unassigned)) {
+                $sweepSorted = array_values($unassigned);
+                usort($sweepSorted, fn(DrivingBlock $a, DrivingBlock $b) => $a->boardTime <=> $b->boardTime);
+
+                foreach ($sweepSorted as $sb) {
+                    if (!isset($unassigned[spl_object_id($sb)])) {
+                        continue;
+                    }
+
+                    // Определяне на тип — съобразяване с целевите бройки.
+                    // Ако целта за естествения тип е вече достигната, избираме
+                    // дневна смяна като универсален резервен тип.
+                    $naturalType = GeneratedShift::TYPE_NIGHT;
+                    if ($sb->boardTime < $params->morningThresholdSeconds) {
+                        $naturalType = GeneratedShift::TYPE_MORNING;
+                    } elseif ($sb->boardTime < $params->nightThresholdSeconds) {
+                        $naturalType = GeneratedShift::TYPE_DAY;
+                    }
+
+                    // Проверяваме дали целта е зададена И достигната
+                    $typeTargets = [
+                        GeneratedShift::TYPE_MORNING => [$params->targetMorningShifts, $morningCounter],
+                        GeneratedShift::TYPE_DAY     => [$params->targetDayShifts, $dayCounter],
+                        GeneratedShift::TYPE_NIGHT   => [$params->targetNightShifts, $nightCounter],
+                    ];
+
+                    $sweepType = $naturalType;
+                    [$target, $current] = $typeTargets[$naturalType];
+                    if ($target > 0 && $current >= $target) {
+                        // Целта е достигната — търсим алтернативен тип с място
+                        $fallbackOrder = [GeneratedShift::TYPE_DAY, GeneratedShift::TYPE_NIGHT, GeneratedShift::TYPE_MORNING];
+                        foreach ($fallbackOrder as $alt) {
+                            if ($alt === $naturalType) {
+                                continue;
+                            }
+                            [$altTarget, $altCurrent] = $typeTargets[$alt];
+                            if ($altTarget === 0 || $altCurrent < $altTarget) {
+                                $sweepType = $alt;
+                                break;
+                            }
+                        }
+                    }
+
+                    $s = $newShift($sweepType);
+                    $s->addBlock($sb);
+                    $popBlock($sb);
+
+                    // Разширяваме алчно без тип-филтър
+                    while (true) {
+                        $last = $s->lastBlock();
+                        if ($last === null) {
+                            break;
+                        }
+                        $candidates = [];
+                        foreach ($unassigned as $ub) {
+                            if ($ub->boardTime >= $last->alightTime
+                                && $s->canAddBlock($ub, $params)) {
+                                $candidates[] = $ub;
+                            }
+                        }
+                        usort($candidates, fn(DrivingBlock $a, DrivingBlock $b) => $a->boardTime <=> $b->boardTime);
+                        if (empty($candidates)) {
+                            break;
+                        }
+                        $s->addBlock($candidates[0]);
+                        $popBlock($candidates[0]);
+                    }
+
+                    $shifts[] = $s;
+                }
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════
@@ -507,6 +632,30 @@ final class ShiftAssigner
                 $lastEntry->restAfter = null;
             }
         }
+
+        // Sort shifts: morning (С) first, then day (Д), then night (Н), each group by shift code number (СМ1, СМ2, …)
+        $typeOrder = [
+            GeneratedShift::TYPE_MORNING => 0,
+            GeneratedShift::TYPE_DAY => 1,
+            GeneratedShift::TYPE_NIGHT => 2,
+        ];
+        $extractNumber = function (string $shiftId): int {
+            // СМ12-Д → 12
+            if (preg_match('/(\d+)/', $shiftId, $m)) {
+                return (int) $m[1];
+            }
+
+            return 0;
+        };
+        usort($shifts, function (GeneratedShift $a, GeneratedShift $b) use ($typeOrder, $extractNumber) {
+            $ta = $typeOrder[$a->shiftType] ?? 9;
+            $tb = $typeOrder[$b->shiftType] ?? 9;
+            if ($ta !== $tb) {
+                return $ta <=> $tb;
+            }
+
+            return $extractNumber($a->shiftId) <=> $extractNumber($b->shiftId);
+        });
 
         return $shifts;
     }

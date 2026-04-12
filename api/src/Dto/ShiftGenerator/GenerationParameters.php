@@ -12,6 +12,7 @@ final class GenerationParameters
 {
     // Block generator
     public readonly int $maxDriveMinutes;
+    public readonly int $minDriveMinutes;
 
     // Shift assigner
     public readonly int $minRestMinutes;
@@ -22,8 +23,12 @@ final class GenerationParameters
     public readonly int $minDayMinutes;
     public readonly int $minNightMinutes;
     public readonly int $morningThresholdSeconds;   // seconds from midnight
-    public readonly int $morningStation14ThresholdSeconds;
     public readonly int $nightThresholdSeconds;
+
+    // Shift time boundaries (hard deadlines)
+    public readonly int $morningEndTimeSeconds;      // morning shift must end by
+    public readonly int $dayStartTimeSeconds;         // day shift cannot start before
+    public readonly int $dayEndTimeSeconds;            // day shift must end by
     public readonly int $dayTargetMinutes;
 
     // Cross-train handoff
@@ -48,6 +53,7 @@ final class GenerationParameters
     public function __construct(array $data = [])
     {
         $this->maxDriveMinutes = (int) ($data['max_drive_minutes'] ?? 150);
+        $this->minDriveMinutes = (int) ($data['min_drive_minutes'] ?? 60);
         $this->minRestMinutes = (int) ($data['min_rest_minutes'] ?? 50);
         $this->maxMorningMinutes = (int) ($data['max_morning_minutes'] ?? 300);
         $this->maxDayMinutes = (int) ($data['max_day_minutes'] ?? 660);
@@ -56,8 +62,10 @@ final class GenerationParameters
         $this->minDayMinutes = (int) ($data['min_day_minutes'] ?? 480);
         $this->minNightMinutes = (int) ($data['min_night_minutes'] ?? 480);
         $this->morningThresholdSeconds = self::parseHHMMToSeconds($data['morning_threshold'] ?? '09:30');
-        $this->morningStation14ThresholdSeconds = self::parseHHMMToSeconds($data['morning_station14_threshold'] ?? '07:30');
         $this->nightThresholdSeconds = self::parseHHMMToSeconds($data['night_threshold'] ?? '16:30');
+        $this->morningEndTimeSeconds = self::parseHHMMToSeconds($data['morning_end_time'] ?? '10:30');
+        $this->dayStartTimeSeconds = self::parseHHMMToSeconds($data['day_start_time'] ?? '06:00');
+        $this->dayEndTimeSeconds = self::parseHHMMToSeconds($data['day_end_time'] ?? '23:00');
         $this->dayTargetMinutes = (int) ($data['day_target_minutes'] ?? 540);
         $this->crossTrainHandoffMinutes = (int) ($data['cross_train_handoff_minutes'] ?? 20);
         $this->doctorOffsetMinutes = (int) ($data['doctor_offset_minutes'] ?? 30);
@@ -91,6 +99,11 @@ final class GenerationParameters
     public function maxDriveSeconds(): int
     {
         return $this->maxDriveMinutes * 60;
+    }
+
+    public function minDriveSeconds(): int
+    {
+        return $this->minDriveMinutes * 60;
     }
 
     public function minRestSeconds(): int
@@ -139,8 +152,9 @@ final class GenerationParameters
     }
 
     /**
-     * Extract the base station name by stripping the track suffix (_1, _2, etc.).
-     * e.g. '18_1' → '18', '14_2' → '14', 'Depo' → 'Depo'
+     * Extract the base station name by stripping the track suffix (_1, _2, etc.)
+     * and terminal markers (> for first stop, < for last stop).
+     * e.g. '>18_1' → '18', '<18_2' → '18', '14_2' → '14', 'Depo' → 'Depo'
      */
     public static function stationBase(string $station): string
     {
@@ -148,6 +162,9 @@ final class GenerationParameters
         if ($station === 'Depo') {
             return $station;
         }
+
+        // Strip leading terminal markers > and <
+        $station = ltrim($station, '><');
 
         $pos = strrpos($station, '_');
         if ($pos !== false && ctype_digit(substr($station, $pos + 1))) {
@@ -164,6 +181,7 @@ final class GenerationParameters
     {
         return [
             'max_drive_minutes' => $this->maxDriveMinutes,
+            'min_drive_minutes' => $this->minDriveMinutes,
             'min_rest_minutes' => $this->minRestMinutes,
             'max_morning_minutes' => $this->maxMorningMinutes,
             'max_day_minutes' => $this->maxDayMinutes,
@@ -172,8 +190,10 @@ final class GenerationParameters
             'min_day_minutes' => $this->minDayMinutes,
             'min_night_minutes' => $this->minNightMinutes,
             'morning_threshold' => self::secondsToHHMM($this->morningThresholdSeconds),
-            'morning_station14_threshold' => self::secondsToHHMM($this->morningStation14ThresholdSeconds),
             'night_threshold' => self::secondsToHHMM($this->nightThresholdSeconds),
+            'morning_end_time' => self::secondsToHHMM($this->morningEndTimeSeconds),
+            'day_start_time' => self::secondsToHHMM($this->dayStartTimeSeconds),
+            'day_end_time' => self::secondsToHHMM($this->dayEndTimeSeconds),
             'day_target_minutes' => $this->dayTargetMinutes,
             'cross_train_handoff_minutes' => $this->crossTrainHandoffMinutes,
             'doctor_offset_minutes' => $this->doctorOffsetMinutes,

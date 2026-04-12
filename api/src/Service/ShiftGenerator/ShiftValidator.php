@@ -16,8 +16,8 @@ use App\Dto\ShiftGenerator\ValidationResult;
  * които потребителят е избрал при генерирането.
  *
  * Извършва 7 проверки:
- *  1. Всички блокове за управление ≤ max_drive (макс. непрекъснато управление)
- *  2. Всички почивки между блокове ≥ min_rest (мин. почивка)
+ *  1. Непрекъснати вериги управление ≤ max_drive (вкл. междувлакови преходи)
+ *  2. Почивки между блокове ≥ min_rest (междувлак. преходи не са почивка)
  *  3. Продължителност на сутрешна смяна ≤ max_morning
  *  4. Продължителност на дневна/нощна смяна ≤ max_day / max_night
  *  5. 100% покритие на маршрутите (всеки блок присвоен точно веднъж)
@@ -60,34 +60,63 @@ final class ShiftValidator
         $allOk = true;
 
         foreach ($shifts as $s) {
-            foreach ($s->entries as $entry) {
-                $b = $entry->block;
-                if ($b->driveDuration() > $maxDrive) {
-                    $result->error(sprintf(
-                        '%s: блок на маршрут %s (%s-%s) превишава макс. шофиране: %s > %d:%02d',
-                        $s->shiftId, $b->routeId, $b->boardTimeStr(), $b->alightTimeStr(),
-                        $b->driveStr(), intdiv($params->maxDriveMinutes, 60), $params->maxDriveMinutes % 60,
-                    ));
-                    $allOk = false;
+            $entries = $s->entries;
+            $count = \count($entries);
+
+            $chainStart = 0;
+            $chainDrive = 0;
+
+            for ($i = 0; $i < $count; $i++) {
+                $b = $entries[$i]->block;
+                $chainDrive += $b->driveDuration();
+
+                // Проверяваме дали следващият блок е свързан чрез cross-train handoff
+                $isCrossNext = false;
+                if ($i < $count - 1) {
+                    $next = $entries[$i + 1]->block;
+                    $gap = $next->boardTime - $b->alightTime;
+                    if ($b->train !== $next->train) {
+                        $baseAlight = GenerationParameters::stationBase($b->alightStation);
+                        $baseBoard  = GenerationParameters::stationBase($next->boardStation);
+                        if ($baseAlight !== 'Depo' && $baseAlight === $baseBoard
+                            && $gap >= 0 && $gap <= $params->crossTrainHandoffSeconds()) {
+                            $isCrossNext = true;
+                            $chainDrive += $gap;
+                        }
+                    }
+                }
+
+                if (!$isCrossNext) {
+                    if ($chainDrive > $maxDrive) {
+                        $chainStartBlock = $entries[$chainStart]->block;
+                        $result->error(sprintf(
+                            '%s: непрекъснато управление от %s до %s е %s > %d:%02d',
+                            $s->shiftId, $chainStartBlock->boardTimeStr(), $b->alightTimeStr(),
+                            self::formatDuration($chainDrive),
+                            intdiv($params->maxDriveMinutes, 60), $params->maxDriveMinutes % 60,
+                        ));
+                        $allOk = false;
+                    }
+                    $chainStart = $i + 1;
+                    $chainDrive = 0;
                 }
             }
         }
 
         if ($allOk) {
-            $result->warn(sprintf('OK Всички блокове <= %d:%02d', intdiv($params->maxDriveMinutes, 60), $params->maxDriveMinutes % 60));
+            $result->warn(sprintf('OK Всички вериги управление <= %d:%02d', intdiv($params->maxDriveMinutes, 60), $params->maxDriveMinutes % 60));
         }
     }
 
     /**
-     * Проверка 2: Мин. почивка между блокове.
+     * Проверка 2: Мін. почивка между блокове.
      *
      * За всяка двойка последователни блокове в смяна проверява дали
      * времето между слизане и следващо качване е ≥ min_rest_minutes.
      *
-     * Изключение: кръстосан преход (cross-train handoff) — когато два блока
-     * от РАЗЛИЧНИ влакове са на една и съща базова станция (без Depo) и
-     * интервалът е в рамките на cross_train_handoff_minutes, почивката
-     * може да е по-кратка.
+     * Междувлаков преход (cross-train handoff) НЕ е почивка — машинистът
+     * слиза от един влак и се качва на друг без прекъсване на управлението.
+     * При cross-train преход не се проверява минимална почивка.
      */
     private function checkRestPeriods(array $shifts, GenerationParameters $params, ValidationResult $result): void
     {
@@ -101,14 +130,14 @@ final class ShiftValidator
                 $next = $entries[$i + 1]->block;
                 $rest = $next->boardTime - $curr->alightTime;
 
-                // Кръстосан преход: различни влакове, същата базова станция, не Depo —
-                // по-кратък интервал е допустим
+                // Междувлаков преход: различни влакове, същата базова станция,
+                // не Depo, интервал в рамките на crossTrainHandoff — НЕ е почивка
                 if ($curr->train !== $next->train) {
                     $baseAlight = GenerationParameters::stationBase($curr->alightStation);
                     $baseBoard  = GenerationParameters::stationBase($next->boardStation);
                     if ($baseAlight !== 'Depo' && $baseAlight === $baseBoard
                         && $rest <= $params->crossTrainHandoffSeconds() && $rest >= 0) {
-                        continue; // Валиден кръстосан преход — пропускаме проверката за min_rest
+                        continue;
                     }
                 }
 
@@ -125,7 +154,7 @@ final class ShiftValidator
         }
 
         if ($allOk) {
-            $result->warn(sprintf('OK Всички почивки >= %d мин', $params->minRestMinutes));
+            $result->warn(sprintf('OK Всички почивки >= %d мін (междувлакови преходи не се броят)', $params->minRestMinutes));
         }
     }
 
