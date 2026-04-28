@@ -22,7 +22,7 @@ final class GeneratedShift
     public array $entries = [];
 
     public function __construct(
-        public readonly string $shiftId,
+        public string $shiftId,
         public readonly string $shiftType,
     ) {
     }
@@ -63,12 +63,16 @@ final class GeneratedShift
 
     /**
      * Compute the continuous driving time from the end of the shift backwards,
-     * including all blocks chained via cross-train handoffs.
+     * including all blocks chained via cross-train handoffs or same-route continuations.
      *
      * Cross-train handoffs do NOT break continuous driving — the driver switches
      * trains without a real rest break (с едно качване кара два влака).
-     * Only a gap > crossTrainHandoffSeconds (or same-train gap with full rest)
-     * counts as a real break in the driving chain.
+     *
+     * Same-route continuations are consecutive blocks from the same route
+     * (blockIndex N → N+1) that represent an artificial cut by BlockGenerator
+     * at a boundary station — the driver does NOT stop.
+     *
+     * Only a gap with full rest counts as a real break in the driving chain.
      */
     public function continuousDriveChainFromEnd(GenerationParameters $params): int
     {
@@ -85,15 +89,23 @@ final class GeneratedShift
                 $prev = $this->entries[$i - 1]->block;
                 $gap = $block->boardTime - $prev->alightTime;
 
-                $isCross = $prev->train !== $block->train
+                // Same-route continuation: consecutive blocks from the same route,
+                // artificial boundary — driving is continuous
+                $isSameRoute = $prev->routeId === $block->routeId
+                    && $block->blockIndex === $prev->blockIndex + 1
+                    && $gap >= 0 && $gap <= 1;
+
+                // Cross-train handoff: different trains, same base station, not Depo
+                $isCross = !$isSameRoute
+                    && $prev->train !== $block->train
                     && GenerationParameters::stationBase($prev->alightStation) !== 'Depo'
                     && GenerationParameters::stationBase($prev->alightStation) === GenerationParameters::stationBase($block->boardStation)
                     && $gap >= 0
                     && $gap <= $params->crossTrainHandoffSeconds();
 
-                if ($isCross) {
-                    // Handoff gap counts toward driving time
-                    $total += $gap;
+                if ($isSameRoute || $isCross) {
+                    // Gap counts toward driving time
+                    $total += max(0, $gap);
                     continue;
                 }
                 // Real rest — stop the chain
@@ -135,6 +147,26 @@ final class GeneratedShift
         }
 
         $last = $this->lastBlock();
+        if ($last === null) {
+            return true;
+        }
+
+        $lastAlightBase = GenerationParameters::stationBase($last->alightStation);
+        $nextBoardBase = GenerationParameters::stationBase($block->boardStation);
+
+        // Сутрешна смяна: ако машинистът е слязъл на станция, не допускаме
+        // връщане в депо за извеждане на нов влак.
+        if ($this->shiftType === self::TYPE_MORNING
+            && $lastAlightBase !== 'Depo'
+            && $nextBoardBase === 'Depo') {
+            return false;
+        }
+
+        // Нощна смяна: след влизане в депо смяната приключва.
+        if ($this->shiftType === self::TYPE_NIGHT && $lastAlightBase === 'Depo') {
+            return false;
+        }
+
         $gap = $block->boardTime - $last->alightTime;
 
         // Block must start after previous ends
@@ -142,10 +174,17 @@ final class GeneratedShift
             return false;
         }
 
+        // Detect same-route continuation: consecutive blocks from same route.
+        // These are artificial cuts by BlockGenerator at boundary stations —
+        // the driver does NOT stop, driving is continuous.
+        $isSameRouteContinuation = $last->routeId === $block->routeId
+            && $block->blockIndex === $last->blockIndex + 1
+            && $gap >= 0 && $gap <= 1;
+
         // Detect cross-train handoff: different trains, same base station (ignoring
         // track _N suffix), NOT at Depo, gap within handoff limit.
         $isCrossTrain = false;
-        if ($last->train !== $block->train) {
+        if (!$isSameRouteContinuation && $last->train !== $block->train) {
             $baseAlight = GenerationParameters::stationBase($last->alightStation);
             $baseBoard  = GenerationParameters::stationBase($block->boardStation);
             if ($baseAlight !== 'Depo' && $baseAlight === $baseBoard
@@ -154,10 +193,10 @@ final class GeneratedShift
             }
         }
 
-        if ($isCrossTrain) {
-            // Cross-train handoff: NOT a rest break — driving is continuous.
+        if ($isSameRouteContinuation || $isCrossTrain) {
+            // Continuous driving — NOT a rest break.
             // Check that the continuous drive chain doesn't exceed maxDrive.
-            $chainDrive = $this->continuousDriveChainFromEnd($params) + $gap + $block->driveDuration();
+            $chainDrive = $this->continuousDriveChainFromEnd($params) + max(0, $gap) + $block->driveDuration();
             if ($chainDrive > $params->maxDriveSeconds()) {
                 return false;
             }
@@ -181,8 +220,10 @@ final class GeneratedShift
         if ($this->shiftType === self::TYPE_MORNING && $newTotal > $params->maxMorningSeconds()) {
             return false;
         }
-        if (\in_array($this->shiftType, [self::TYPE_DAY, self::TYPE_NIGHT], true)
-            && $newTotal > $params->maxDaySeconds()) {
+        if ($this->shiftType === self::TYPE_DAY && $newTotal > $params->maxDaySeconds()) {
+            return false;
+        }
+        if ($this->shiftType === self::TYPE_NIGHT && $newTotal > $params->maxNightSeconds()) {
             return false;
         }
 

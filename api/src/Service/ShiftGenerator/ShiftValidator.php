@@ -70,23 +70,33 @@ final class ShiftValidator
                 $b = $entries[$i]->block;
                 $chainDrive += $b->driveDuration();
 
-                // Проверяваме дали следващият блок е свързан чрез cross-train handoff
-                $isCrossNext = false;
+                // Проверяваме дали следващият блок е свързан чрез same-route continuation или cross-train handoff
+                $isContinuousNext = false;
                 if ($i < $count - 1) {
                     $next = $entries[$i + 1]->block;
                     $gap = $next->boardTime - $b->alightTime;
-                    if ($b->train !== $next->train) {
+
+                    // Same-route continuation: последователни блокове от същия маршрут
+                    if ($b->routeId === $next->routeId
+                        && $next->blockIndex === $b->blockIndex + 1
+                        && $gap >= 0 && $gap <= 1) {
+                        $isContinuousNext = true;
+                        $chainDrive += max(0, $gap);
+                    }
+
+                    // Cross-train handoff
+                    if (!$isContinuousNext && $b->train !== $next->train) {
                         $baseAlight = GenerationParameters::stationBase($b->alightStation);
                         $baseBoard  = GenerationParameters::stationBase($next->boardStation);
                         if ($baseAlight !== 'Depo' && $baseAlight === $baseBoard
                             && $gap >= 0 && $gap <= $params->crossTrainHandoffSeconds()) {
-                            $isCrossNext = true;
+                            $isContinuousNext = true;
                             $chainDrive += $gap;
                         }
                     }
                 }
 
-                if (!$isCrossNext) {
+                if (!$isContinuousNext) {
                     if ($chainDrive > $maxDrive) {
                         $chainStartBlock = $entries[$chainStart]->block;
                         $result->error(sprintf(
@@ -130,6 +140,14 @@ final class ShiftValidator
                 $next = $entries[$i + 1]->block;
                 $rest = $next->boardTime - $curr->alightTime;
 
+                // Same-route continuation: последователни блокове от същия маршрут,
+                // изкуствена граница от BlockGenerator — НЕ е почивка
+                if ($curr->routeId === $next->routeId
+                    && $next->blockIndex === $curr->blockIndex + 1
+                    && $rest >= 0 && $rest <= 1) {
+                    continue;
+                }
+
                 // Междувлаков преход: различни влакове, същата базова станция,
                 // не Depo, интервал в рамките на crossTrainHandoff — НЕ е почивка
                 if ($curr->train !== $next->train) {
@@ -154,7 +172,7 @@ final class ShiftValidator
         }
 
         if ($allOk) {
-            $result->warn(sprintf('OK Всички почивки >= %d мін (междувлакови преходи не се броят)', $params->minRestMinutes));
+            $result->warn(sprintf('OK Всички почивки >= %d мін (междувлакови преходи и same-route продължения не се броят)', $params->minRestMinutes));
         }
     }
 
@@ -200,23 +218,26 @@ final class ShiftValidator
 
             // ── Проверки за минимум ──
             if ($s->shiftType === GeneratedShift::TYPE_MORNING && $dur < $params->minMorningSeconds()) {
-                $result->warn(sprintf(
-                    'WARN %s: сутрешна смяна (%s) е под минимума %d:%02d',
+                $result->error(sprintf(
+                    '%s: кратка сутрешна смяна (%s) — под минимума %d:%02d',
                     $s->shiftId, self::formatDuration($dur),
                     intdiv($params->minMorningMinutes, 60), $params->minMorningMinutes % 60,
                 ));
+                $allOk = false;
             } elseif ($s->shiftType === GeneratedShift::TYPE_DAY && $dur < $params->minDaySeconds()) {
-                $result->warn(sprintf(
-                    'WARN %s: кратка дневна смяна (%s) — под минимума %d:%02d',
+                $result->error(sprintf(
+                    '%s: кратка дневна смяна (%s) — под минимума %d:%02d',
                     $s->shiftId, self::formatDuration($dur),
                     intdiv($params->minDayMinutes, 60), $params->minDayMinutes % 60,
                 ));
+                $allOk = false;
             } elseif ($s->shiftType === GeneratedShift::TYPE_NIGHT && $dur < $params->minNightSeconds()) {
-                $result->warn(sprintf(
-                    'WARN %s: кратка нощна смяна (%s) — под минимума %d:%02d',
+                $result->error(sprintf(
+                    '%s: кратка нощна смяна (%s) — под минимума %d:%02d',
                     $s->shiftId, self::formatDuration($dur),
                     intdiv($params->minNightMinutes, 60), $params->minNightMinutes % 60,
                 ));
+                $allOk = false;
             }
         }
 
@@ -308,45 +329,59 @@ final class ShiftValidator
                 // Проверка на точката на качване (за блокове след първия)
                 if ($i > 0) {
                     $prev = $entries[$i - 1]->block;
-                    $boardOk = $b->canCrewChangeAtBoard($stations) || $b->isBoardAtRouteEndpoint();
 
-                    // Кръстосан преход: същата базова станция (без номер коловоз),
-                    // не Depo, в рамките на допустимия интервал
-                    if (!$boardOk) {
-                        $gap = $b->boardTime - $prev->alightTime;
-                        $boardOk = GenerationParameters::stationBase($prev->alightStation) !== 'Depo'
-                            && GenerationParameters::stationBase($prev->alightStation) === GenerationParameters::stationBase($b->boardStation)
-                            && $gap <= $params->crossTrainHandoffSeconds();
-                    }
+                    // Same-route continuation: вътрешна граница от BlockGenerator — не е реален handoff
+                    $isSameRoute = $prev->routeId === $b->routeId
+                        && $b->blockIndex === $prev->blockIndex + 1;
 
-                    if (!$boardOk) {
-                        $result->error(sprintf(
-                            '%s: блок %d на маршрут %s се качва на \'%s\' (не е ст. за оборот, начална/крайна станция или съвместим кръстосан влак)',
-                            $s->shiftId, $i, $b->routeId, $b->boardStation,
-                        ));
-                        $allOk = false;
+                    if (!$isSameRoute) {
+                        $boardOk = $b->canCrewChangeAtBoard($stations) || $b->isBoardAtRouteEndpoint();
+
+                        // Кръстосан преход: същата базова станция (без номер коловоз),
+                        // не Depo, в рамките на допустимия интервал
+                        if (!$boardOk) {
+                            $gap = $b->boardTime - $prev->alightTime;
+                            $boardOk = GenerationParameters::stationBase($prev->alightStation) !== 'Depo'
+                                && GenerationParameters::stationBase($prev->alightStation) === GenerationParameters::stationBase($b->boardStation)
+                                && $gap <= $params->crossTrainHandoffSeconds();
+                        }
+
+                        if (!$boardOk) {
+                            $result->error(sprintf(
+                                '%s: блок %d на маршрут %s се качва на \'%s\' (не е ст. за оборот, начална/крайна станция или съвместим кръстосан влак)',
+                                $s->shiftId, $i, $b->routeId, $b->boardStation,
+                            ));
+                            $allOk = false;
+                        }
                     }
                 }
 
                 // Проверка на точката на слизане (за блокове преди последния)
                 if ($i < $count - 1) {
                     $next = $entries[$i + 1]->block;
-                    $alightOk = $b->canCrewChangeAtAlight($stations) || $b->isAlightAtRouteEndpoint();
 
-                    // Кръстосан преход
-                    if (!$alightOk) {
-                        $gap = $next->boardTime - $b->alightTime;
-                        $alightOk = GenerationParameters::stationBase($b->alightStation) !== 'Depo'
-                            && GenerationParameters::stationBase($b->alightStation) === GenerationParameters::stationBase($next->boardStation)
-                            && $gap <= $params->crossTrainHandoffSeconds();
-                    }
+                    // Same-route continuation: вътрешна граница — не се проверява
+                    $isSameRouteNext = $b->routeId === $next->routeId
+                        && $next->blockIndex === $b->blockIndex + 1;
 
-                    if (!$alightOk) {
-                        $result->error(sprintf(
-                            '%s: блок %d на маршрут %s слиза на \'%s\' (не е ст. за оборот, начална/крайна станция или съвместим кръстосан влак)',
-                            $s->shiftId, $i, $b->routeId, $b->alightStation,
-                        ));
-                        $allOk = false;
+                    if (!$isSameRouteNext) {
+                        $alightOk = $b->canCrewChangeAtAlight($stations) || $b->isAlightAtRouteEndpoint();
+
+                        // Кръстосан преход
+                        if (!$alightOk) {
+                            $gap = $next->boardTime - $b->alightTime;
+                            $alightOk = GenerationParameters::stationBase($b->alightStation) !== 'Depo'
+                                && GenerationParameters::stationBase($b->alightStation) === GenerationParameters::stationBase($next->boardStation)
+                                && $gap <= $params->crossTrainHandoffSeconds();
+                        }
+
+                        if (!$alightOk) {
+                            $result->error(sprintf(
+                                '%s: блок %d на маршрут %s слиза на \'%s\' (не е ст. за оборот, начална/крайна станция или съвместим кръстосан влак)',
+                                $s->shiftId, $i, $b->routeId, $b->alightStation,
+                            ));
+                            $allOk = false;
+                        }
                     }
                 }
             }

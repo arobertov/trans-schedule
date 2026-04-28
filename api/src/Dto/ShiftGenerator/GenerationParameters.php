@@ -10,6 +10,10 @@ namespace App\Dto\ShiftGenerator;
  */
 final class GenerationParameters
 {
+    private const MIN_ALLOWED_MORNING_MINUTES = 180;
+    private const MIN_ALLOWED_DAY_MINUTES = 480;
+    private const MIN_ALLOWED_NIGHT_MINUTES = 240;
+
     // Block generator
     public readonly int $maxDriveMinutes;
     public readonly int $minDriveMinutes;
@@ -58,9 +62,9 @@ final class GenerationParameters
         $this->maxMorningMinutes = (int) ($data['max_morning_minutes'] ?? 300);
         $this->maxDayMinutes = (int) ($data['max_day_minutes'] ?? 660);
         $this->maxNightMinutes = (int) ($data['max_night_minutes'] ?? 660);
-        $this->minMorningMinutes = (int) ($data['min_morning_minutes'] ?? 180);
-        $this->minDayMinutes = (int) ($data['min_day_minutes'] ?? 480);
-        $this->minNightMinutes = (int) ($data['min_night_minutes'] ?? 480);
+        $this->minMorningMinutes = max(self::MIN_ALLOWED_MORNING_MINUTES, (int) ($data['min_morning_minutes'] ?? self::MIN_ALLOWED_MORNING_MINUTES));
+        $this->minDayMinutes = max(self::MIN_ALLOWED_DAY_MINUTES, (int) ($data['min_day_minutes'] ?? self::MIN_ALLOWED_DAY_MINUTES));
+        $this->minNightMinutes = max(self::MIN_ALLOWED_NIGHT_MINUTES, (int) ($data['min_night_minutes'] ?? self::MIN_ALLOWED_NIGHT_MINUTES));
         $this->morningThresholdSeconds = self::parseHHMMToSeconds($data['morning_threshold'] ?? '09:30');
         $this->nightThresholdSeconds = self::parseHHMMToSeconds($data['night_threshold'] ?? '16:30');
         $this->morningEndTimeSeconds = self::parseHHMMToSeconds($data['morning_end_time'] ?? '10:30');

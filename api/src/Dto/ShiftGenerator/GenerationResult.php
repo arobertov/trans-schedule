@@ -73,6 +73,11 @@ final class GenerationResult
         }
 
         $unassigned = [];
+        $unassignedSummary = [
+            GeneratedShift::TYPE_MORNING => 0,
+            GeneratedShift::TYPE_DAY => 0,
+            GeneratedShift::TYPE_NIGHT => 0,
+        ];
         foreach ($this->unassignedBlocks as $b) {
             $unassigned[] = [
                 'route_id' => $b->routeId,
@@ -83,6 +88,13 @@ final class GenerationResult
                 'alight_station' => $b->alightStation,
                 'alight_time' => $b->alightTimeStr(),
             ];
+
+            $type = match (true) {
+                $b->boardTime <= $this->parameters->morningThresholdSeconds => GeneratedShift::TYPE_MORNING,
+                $b->boardTime >= $this->parameters->nightThresholdSeconds => GeneratedShift::TYPE_NIGHT,
+                default => GeneratedShift::TYPE_DAY,
+            };
+            $unassignedSummary[$type]++;
         }
 
         return [
@@ -95,6 +107,11 @@ final class GenerationResult
             'validation' => $this->validation->toArray(),
             'shifts_preview' => $preview,
             'unassigned_blocks' => $unassigned,
+            'unassigned_summary' => [
+                'morning' => $unassignedSummary[GeneratedShift::TYPE_MORNING],
+                'day' => $unassignedSummary[GeneratedShift::TYPE_DAY],
+                'night' => $unassignedSummary[GeneratedShift::TYPE_NIGHT],
+            ],
             'feedback' => $this->feedback,
             'parameters_used' => $this->parameters->toArray(),
         ];

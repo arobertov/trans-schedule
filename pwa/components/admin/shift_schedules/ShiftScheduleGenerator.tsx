@@ -48,16 +48,22 @@ import WarningIcon from "@mui/icons-material/Warning";
 import { getToken } from "../../../jwt-frontend-auth/src/auth/authService";
 
 // ─── Defaults matching the Python algorithm ───
+const POLICY_MINIMUMS = {
+  min_morning_minutes: 180,
+  min_day_minutes: 480,
+  min_night_minutes: 240,
+} as const;
+
 const DEFAULTS = {
   max_drive_minutes: 150,
-  min_drive_minutes: 60,
+  min_drive_minutes: 50,
   min_rest_minutes: 50,
   max_morning_minutes: 330,
   max_day_minutes: 660,
   max_night_minutes: 660,
-  min_morning_minutes: 180,
-  min_day_minutes: 540,
-  min_night_minutes: 480,
+  min_morning_minutes: POLICY_MINIMUMS.min_morning_minutes,
+  min_day_minutes: POLICY_MINIMUMS.min_day_minutes,
+  min_night_minutes: POLICY_MINIMUMS.min_night_minutes,
   morning_threshold: "09:30",
   night_threshold: "18:00",
   morning_end_time: "09:50",
@@ -112,6 +118,11 @@ type GenerateResponse = {
   };
   shifts_preview: ShiftPreview[];
   unassigned_blocks: UnassignedBlock[];
+  unassigned_summary?: {
+    morning: number;
+    day: number;
+    night: number;
+  };
   feedback: string[];
   parameters_used: Record<string, unknown>;
 };
@@ -132,6 +143,11 @@ const hmmToMinutes = (hmm: string): number => {
   const [h, m] = hmm.split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
 };
+
+const clampPolicyMinimum = (
+  key: keyof typeof POLICY_MINIMUMS,
+  value: number
+): number => Math.max(POLICY_MINIMUMS[key], value || 0);
 
 export const ShiftScheduleGenerator = () => {
   const notify = useNotify();
@@ -165,6 +181,7 @@ export const ShiftScheduleGenerator = () => {
   // ─── State ───
   const [loading, setLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<GenerateResponse | null>(null);
+  const [savedScheduleId, setSavedScheduleId] = useState<number | null>(null);
 
   // ─── API call helper ───
   const callApi = useCallback(
@@ -214,6 +231,7 @@ export const ShiftScheduleGenerator = () => {
       return;
     }
     setLoading(true);
+    setSavedScheduleId(null);
     setPreviewResult(null);
     try {
       const result = await callApi("/api/shift_schedules/generate/preview");
@@ -241,13 +259,29 @@ export const ShiftScheduleGenerator = () => {
     }
 
     setLoading(true);
+    setSavedScheduleId(null);
     try {
       const result = await callApi("/api/shift_schedules/generate");
+      setPreviewResult(result);
+      setSavedScheduleId(result.schedule_id ?? null);
+
+      const hasIssues = !result.validation.ok
+        || result.feedback.length > 0
+        || result.unassigned_blocks.length > 0;
+
       notify(
         `Генерирани ${result.shifts_count} смени (С: ${result.morning_count}, Д: ${result.day_count}, Н: ${result.night_count}) — проект`,
         { type: "success" }
       );
-      if (result.schedule_id) {
+
+      if (hasIssues) {
+        notify(
+          `Открити са проблеми: ${result.validation.errors.length} грешки, ${result.feedback.length} съобщения от генератора и ${result.unassigned_blocks.length} неразпределени блока.`,
+          { type: result.validation.errors.length > 0 ? "error" : "warning" }
+        );
+      }
+
+      if (result.schedule_id && !hasIssues) {
         redirect("/shift-schedules/draft/" + result.schedule_id);
       }
     } catch (err: any) {
@@ -506,9 +540,9 @@ export const ShiftScheduleGenerator = () => {
                   type="number"
                   label="Мин. сутрешна смяна (мин)"
                   value={params.min_morning_minutes}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("min_morning_minutes", parseInt(e.target.value, 10) || 0)}
-                  helperText={`= ${minutesToHMM(params.min_morning_minutes)}`}
-                  inputProps={{ min: 0, max: 1440 }}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("min_morning_minutes", clampPolicyMinimum("min_morning_minutes", parseInt(e.target.value, 10) || 0))}
+                  helperText={`= ${minutesToHMM(params.min_morning_minutes)} (мин. допустимо ${minutesToHMM(POLICY_MINIMUMS.min_morning_minutes)})`}
+                  inputProps={{ min: POLICY_MINIMUMS.min_morning_minutes, max: 1440 }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -517,9 +551,9 @@ export const ShiftScheduleGenerator = () => {
                   type="number"
                   label="Мин. дневна смяна (мин)"
                   value={params.min_day_minutes}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("min_day_minutes", parseInt(e.target.value, 10) || 0)}
-                  helperText={`= ${minutesToHMM(params.min_day_minutes)}`}
-                  inputProps={{ min: 0, max: 1440 }}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("min_day_minutes", clampPolicyMinimum("min_day_minutes", parseInt(e.target.value, 10) || 0))}
+                  helperText={`= ${minutesToHMM(params.min_day_minutes)} (мин. допустимо ${minutesToHMM(POLICY_MINIMUMS.min_day_minutes)})`}
+                  inputProps={{ min: POLICY_MINIMUMS.min_day_minutes, max: 1440 }}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -528,9 +562,9 @@ export const ShiftScheduleGenerator = () => {
                   type="number"
                   label="Мин. нощна смяна (мин)"
                   value={params.min_night_minutes}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("min_night_minutes", parseInt(e.target.value, 10) || 0)}
-                  helperText={`= ${minutesToHMM(params.min_night_minutes)}`}
-                  inputProps={{ min: 0, max: 1440 }}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateParam("min_night_minutes", clampPolicyMinimum("min_night_minutes", parseInt(e.target.value, 10) || 0))}
+                  helperText={`= ${minutesToHMM(params.min_night_minutes)} (мин. допустимо ${minutesToHMM(POLICY_MINIMUMS.min_night_minutes)})`}
+                  inputProps={{ min: POLICY_MINIMUMS.min_night_minutes, max: 1440 }}
                 />
               </Grid>
 
@@ -753,6 +787,22 @@ export const ShiftScheduleGenerator = () => {
                 Резултат от генерирането
               </Typography>
 
+              {savedScheduleId && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  <AlertTitle>Проектът е записан</AlertTitle>
+                  Генераторът откри проблеми и затова страницата не пренасочи автоматично.
+                  <Box sx={{ mt: 1.5 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => redirect("/shift-schedules/draft/" + savedScheduleId)}
+                    >
+                      Отвори проекта
+                    </Button>
+                  </Box>
+                </Alert>
+              )}
+
               {/* Summary chips */}
               <Box display="flex" gap={1} flexWrap="wrap" mb={2}>
                 <Chip
@@ -773,6 +823,25 @@ export const ShiftScheduleGenerator = () => {
                   sx={{ backgroundColor: "#F44336", color: "#fff" }}
                 />
               </Box>
+
+              {previewResult.unassigned_summary && (
+                (previewResult.unassigned_summary.morning > 0
+                  || previewResult.unassigned_summary.day > 0
+                  || previewResult.unassigned_summary.night > 0)
+              ) && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  <AlertTitle>Има непокрити блокове</AlertTitle>
+                  {previewResult.unassigned_summary.morning > 0 && (
+                    <Box>Непокрити сутрешни блокове: {previewResult.unassigned_summary.morning}</Box>
+                  )}
+                  {previewResult.unassigned_summary.day > 0 && (
+                    <Box>Непокрити дневни блокове: {previewResult.unassigned_summary.day}</Box>
+                  )}
+                  {previewResult.unassigned_summary.night > 0 && (
+                    <Box>Непокрити нощни блокове: {previewResult.unassigned_summary.night}</Box>
+                  )}
+                </Alert>
+              )}
 
               {/* Validation */}
               {previewResult.validation.ok ? (

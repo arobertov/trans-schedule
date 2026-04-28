@@ -16,7 +16,7 @@ use App\Dto\ShiftGenerator\GenerationParameters;
  * от GenerationParameters (динамични, зададени от потребителя).
  *
  * Фази на алгоритъма:
- *   Фаза 0: Комбинирани нощни смени, преминаващи полунощ (107→100, 108→101-сутрин)
+ *   Фаза 0: Комбинирани нощни смени, преминаващи полунощ чрез алгоритмично сутрешно продължение
  *   Фаза 1: Класификация на оставащите блокове като сутрешни / дневни / нощни кандидати
  *   Фаза 2: Изграждане на сутрешни смени (точен брой, ако е зададен)
  *   Фаза 3: Изграждане на нощни смени (точен брой, ако е зададен)
@@ -33,15 +33,6 @@ use App\Dto\ShiftGenerator\GenerationParameters;
 final class ShiftAssigner
 {
     /**
-     * Хардкоднати двойки маршрути, които формират комбинирани нощни смени
-     * преминаващи полунощ. Напр. последният блок на влак 107 + първият на 100.
-     */
-    private const COMBINED_NIGHT_ROUTES = [
-        ['107', '100'],
-        ['108', '101-morning'],
-    ];
-
-    /**
      * Маршрути, които са изключени от нощния пул (вечерни сегменти,
      * които завършват прекалено рано за нощна смяна).
      */
@@ -52,6 +43,11 @@ final class ShiftAssigner
 
     /** @var string[] Съобщения с обратна връзка за проблеми при разпределянето */
     private array $feedback = [];
+
+    public function __construct(
+        private readonly SolverClient $solverClient,
+    ) {
+    }
 
     /**
      * Връща масив от блокове, които не са присвоени към никоя смяна.
@@ -90,27 +86,87 @@ final class ShiftAssigner
         $this->unassignedBlocks = [];
         $this->feedback = [];
 
-        // Броячи за всеки тип смяна — използват се за именуване (СМ1-С, СМ2-Д и т.н.)
+        // Отделяме броя на генерираните смени от поредността на номерата,
+        // защото нощните смени могат да получат предпочитан номер по станция.
+        $morningCount = 0;
+        $dayCount = 0;
+        $nightCount = 0;
         $morningCounter = 0;
         $dayCounter = 0;
         $nightCounter = 0;
+        $usedShiftNumbers = [
+            GeneratedShift::TYPE_MORNING => [],
+            GeneratedShift::TYPE_DAY => [],
+            GeneratedShift::TYPE_NIGHT => [],
+        ];
 
         /**
          * Помощна функция: създава нова смяна с автоматично генериран код.
          * Форматът е: СМ{номер}-{тип}, напр. „СМ1-С" (1-ва сутрешна), „СМ3-Д" (3-та дневна).
          */
-        $newShift = function (string $type) use (&$morningCounter, &$dayCounter, &$nightCounter): GeneratedShift {
+        $allocateShiftNumber = function (string $type, ?int $preferredNumber = null) use (&$morningCount, &$dayCount, &$nightCount, &$morningCounter, &$dayCounter, &$nightCounter, &$usedShiftNumbers): int {
+            if ($preferredNumber !== null
+                && $preferredNumber > 0
+                && !isset($usedShiftNumbers[$type][$preferredNumber])) {
+                $usedShiftNumbers[$type][$preferredNumber] = true;
+
+                if ($type === GeneratedShift::TYPE_MORNING) {
+                    $morningCount++;
+                } elseif ($type === GeneratedShift::TYPE_DAY) {
+                    $dayCount++;
+                } else {
+                    $nightCount++;
+                }
+
+                return $preferredNumber;
+            }
+
+            if ($type === GeneratedShift::TYPE_MORNING) {
+                do {
+                    $morningCounter++;
+                } while (isset($usedShiftNumbers[$type][$morningCounter]));
+
+                $usedShiftNumbers[$type][$morningCounter] = true;
+                $morningCount++;
+
+                return $morningCounter;
+            }
+
+            if ($type === GeneratedShift::TYPE_DAY) {
+                do {
+                    $dayCounter++;
+                } while (isset($usedShiftNumbers[$type][$dayCounter]));
+
+                $usedShiftNumbers[$type][$dayCounter] = true;
+                $dayCount++;
+
+                return $dayCounter;
+            }
+
+            do {
+                $nightCounter++;
+            } while (isset($usedShiftNumbers[$type][$nightCounter]));
+
+            $usedShiftNumbers[$type][$nightCounter] = true;
+            $nightCount++;
+
+            return $nightCounter;
+        };
+
+        $newShift = function (string $type, ?int $preferredNumber = null) use ($allocateShiftNumber): GeneratedShift {
+            $shiftNumber = $allocateShiftNumber($type, $preferredNumber);
+
             return match ($type) {
                 GeneratedShift::TYPE_MORNING => new GeneratedShift(
-                    'СМ' . (++$morningCounter) . '-' . GeneratedShift::TYPE_MORNING,
+                    'СМ' . $shiftNumber . '-' . GeneratedShift::TYPE_MORNING,
                     GeneratedShift::TYPE_MORNING,
                 ),
                 GeneratedShift::TYPE_DAY => new GeneratedShift(
-                    'СМ' . (++$dayCounter) . '-' . GeneratedShift::TYPE_DAY,
+                    'СМ' . $shiftNumber . '-' . GeneratedShift::TYPE_DAY,
                     GeneratedShift::TYPE_DAY,
                 ),
                 default => new GeneratedShift(
-                    'СМ' . (++$nightCounter) . '-' . GeneratedShift::TYPE_NIGHT,
+                    'СМ' . $shiftNumber . '-' . GeneratedShift::TYPE_NIGHT,
                     GeneratedShift::TYPE_NIGHT,
                 ),
             };
@@ -132,6 +188,53 @@ final class ShiftAssigner
         /** Помощна функция: премахва блок от речника на неприсвоените */
         $popBlock = function (DrivingBlock $b) use (&$unassigned): void {
             unset($unassigned[spl_object_id($b)]);
+        };
+
+        /** Връща всички блокове от отхвърлена смяна обратно в неприсвоените */
+        $restoreShiftBlocks = function (GeneratedShift $shift) use (&$unassigned): void {
+            foreach ($shift->entries as $entry) {
+                $block = $entry->block;
+                $unassigned[spl_object_id($block)] = $block;
+            }
+        };
+
+        /** Освобождава номера и брояча на вече създадена, но отхвърлена смяна */
+        $releaseShiftAllocation = function (GeneratedShift $shift) use (&$morningCount, &$dayCount, &$nightCount, &$usedShiftNumbers): void {
+            if (preg_match('/(\d+)/', $shift->shiftId, $matches) !== 1) {
+                return;
+            }
+
+            $shiftNumber = (int) $matches[1];
+            unset($usedShiftNumbers[$shift->shiftType][$shiftNumber]);
+
+            if ($shift->shiftType === GeneratedShift::TYPE_MORNING) {
+                $morningCount = max(0, $morningCount - 1);
+                return;
+            }
+
+            if ($shift->shiftType === GeneratedShift::TYPE_DAY) {
+                $dayCount = max(0, $dayCount - 1);
+                return;
+            }
+
+            $nightCount = max(0, $nightCount - 1);
+        };
+
+        /** Пълно отхвърляне на временна смяна: връща блоковете и освобождава allocation */
+        $discardShift = function (GeneratedShift $shift) use ($restoreShiftBlocks, $releaseShiftAllocation): void {
+            $restoreShiftBlocks($shift);
+            $releaseShiftAllocation($shift);
+        };
+
+        /** Добавя предупреждение само веднъж за конкретен ключ */
+        $feedbackWarnings = [];
+        $warnOnce = function (string $key, string $message) use (&$feedbackWarnings): void {
+            if (isset($feedbackWarnings[$key])) {
+                return;
+            }
+
+            $feedbackWarnings[$key] = true;
+            $this->feedback[] = $message;
         };
 
         /** Помощна функция: намира последния (по blockIndex) неприсвоен блок за даден маршрут */
@@ -161,14 +264,77 @@ final class ShiftAssigner
         // ══════════════════════════════════════════════════════════════════
         // ── Фаза 0: Комбинирани нощни смени, преминаващи полунощ ──────
         // ══════════════════════════════════════════════════════════════════
-        // Свързва последния блок от вечерен маршрут (напр. 107) с първия блок
-        // от сутрешен маршрут (напр. 100) на следващия ден. Времената на
-        // втория блок се коригират с +24 часа (86400 сек.), за да се
-        // моделира преминаването през полунощ.
-        foreach (self::COMBINED_NIGHT_ROUTES as [$routeA, $routeB]) {
-            $lastA = $lastBlockOf($routeA);
-            $firstB = $firstBlockOf($routeB);
-            if ($lastA === null || $firstB === null) {
+        // Намира последния блок на маршрут, който завършва след 23:00 на станция,
+        // различна от Depo. След това търси първия влак на следващата сутрин,
+        // който потегля от същата базова станция, без значение от номера на влака.
+        $extractStationShiftNumber = static function (string $station): ?int {
+            $baseStation = GenerationParameters::stationBase($station);
+            if ($baseStation === 'Depo') {
+                return null;
+            }
+
+            if (preg_match('/(\d+)/', $baseStation, $matches) !== 1) {
+                return null;
+            }
+
+            return (int) $matches[1];
+        };
+
+        $firstMorningBlockFromStation = function (DrivingBlock $nightBlock) use (&$unassigned, $params): ?DrivingBlock {
+            $targetBaseStation = GenerationParameters::stationBase($nightBlock->alightStation);
+            if ($targetBaseStation === 'Depo') {
+                return null;
+            }
+
+            $best = null;
+            foreach ($unassigned as $candidate) {
+                if ($candidate->boardTime >= $params->morningThresholdSeconds) {
+                    continue;
+                }
+
+                if (GenerationParameters::stationBase($candidate->boardStation) !== $targetBaseStation) {
+                    continue;
+                }
+
+                if ($best === null || $candidate->boardTime < $best->boardTime) {
+                    $best = $candidate;
+                    continue;
+                }
+
+                if ($best !== null
+                    && $candidate->boardTime === $best->boardTime
+                    && $candidate->boardStation === $nightBlock->alightStation
+                    && $best->boardStation !== $nightBlock->alightStation) {
+                    $best = $candidate;
+                }
+            }
+
+            return $best;
+        };
+
+        $nightRouteEnds = array_values($unassigned);
+        usort($nightRouteEnds, fn(DrivingBlock $a, DrivingBlock $b) => $a->alightTime <=> $b->alightTime);
+
+        foreach ($nightRouteEnds as $lastA) {
+            if (!isset($unassigned[spl_object_id($lastA)])) {
+                continue;
+            }
+
+            $routeLastBlock = $lastBlockOf($lastA->routeId);
+            if ($routeLastBlock === null || spl_object_id($routeLastBlock) !== spl_object_id($lastA)) {
+                continue;
+            }
+
+            if ($lastA->alightTime <= 23 * 3600) {
+                continue;
+            }
+
+            if (GenerationParameters::stationBase($lastA->alightStation) === 'Depo') {
+                continue;
+            }
+
+            $firstB = $firstMorningBlockFromStation($lastA);
+            if ($firstB === null) {
                 continue;
             }
 
@@ -190,13 +356,25 @@ final class ShiftAssigner
             $rest = $adjustedB->boardTime - $lastA->alightTime;
             $total = $adjustedB->alightTime - $lastA->boardTime;
             if ($rest >= $params->minRestSeconds() && $total <= $params->maxNightSeconds()) {
-                $s = $newShift(GeneratedShift::TYPE_NIGHT);
+                $preferredShiftNumber = $extractStationShiftNumber($lastA->alightStation);
+                $s = $newShift(GeneratedShift::TYPE_NIGHT, $preferredShiftNumber);
                 $s->addBlock($lastA);
                 $s->addBlock($adjustedB);
                 $popBlock($lastA);
                 $popBlock($firstB);
                 $shifts[] = $s;
             }
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // ── OR-Tools solver опит (преди greedy фазите) ────────────────
+        // ══════════════════════════════════════════════════════════════════
+        // Ако солвърът е достъпен, изпращаме всички блокове и параметри.
+        // Phase 0 смените вече са генерирани — предаваме индексите им,
+        // за да ги изключи солвърът. Ако солвърът успее, прескачаме greedy.
+        $solverResult = $this->trySolverAssignment($allBlocks, $params, $shifts, $unassigned);
+        if ($solverResult !== null) {
+            return $solverResult;
         }
 
         // ══════════════════════════════════════════════════════════════════
@@ -226,6 +404,21 @@ final class ShiftAssigner
         };
 
         /**
+         * Определя естествения тип смяна за блок според часа на качване.
+         */
+        $naturalShiftTypeForBlock = function (DrivingBlock $block) use ($params): string {
+            if ($block->boardTime < $params->morningThresholdSeconds) {
+                return GeneratedShift::TYPE_MORNING;
+            }
+
+            if ($block->boardTime < $params->nightThresholdSeconds) {
+                return GeneratedShift::TYPE_DAY;
+            }
+
+            return GeneratedShift::TYPE_NIGHT;
+        };
+
+        /**
          * Помощна функция: разширява смяна алчно с допълнителни съвместими блокове.
          *
          * На всяка итерация:
@@ -237,7 +430,7 @@ final class ShiftAssigner
          *  4. Избира първия кандидат, добавя го и повтаря
          *  5. Спира, когато няма повече кандидати
          */
-        $extendShift = function (GeneratedShift $s, array &$unassigned, GenerationParameters $params, ?callable $filter = null) use ($popBlock): void {
+        $extendShift = function (GeneratedShift $s, array &$unassigned, GenerationParameters $params, ?callable $filter = null, ?callable $onChosen = null) use ($popBlock): void {
             while (true) {
                 $last = $s->lastBlock();
                 if ($last === null) {
@@ -258,8 +451,52 @@ final class ShiftAssigner
 
                 $chosen = $candidates[0];
                 $s->addBlock($chosen);
+                if ($onChosen !== null) {
+                    $onChosen($chosen);
+                }
                 $popBlock($chosen);
             }
+        };
+
+        /**
+         * Проверява дали смяната може да достигне минимална продължителност,
+         * ако я разширяваме алчно със същите правила, но без да променяме реалния пул.
+         */
+        $canReachMinimumDuration = function (GeneratedShift $sourceShift, array $pool, GenerationParameters $params, int $minimumSeconds, ?callable $filter = null): bool {
+            if ($sourceShift->totalDuration() >= $minimumSeconds) {
+                return true;
+            }
+
+            $probe = new GeneratedShift('__probe__', $sourceShift->shiftType);
+            foreach ($sourceShift->entries as $entry) {
+                $probe->addBlock($entry->block);
+            }
+
+            while ($probe->totalDuration() < $minimumSeconds) {
+                $last = $probe->lastBlock();
+                if ($last === null) {
+                    return false;
+                }
+
+                $candidates = array_values(array_filter(
+                    $pool,
+                    fn(DrivingBlock $b) =>
+                        $b->boardTime >= $last->alightTime
+                        && $probe->canAddBlock($b, $params)
+                        && ($filter === null || $filter($b))
+                ));
+
+                usort($candidates, fn(DrivingBlock $a, DrivingBlock $b) => $a->boardTime <=> $b->boardTime);
+                if (empty($candidates)) {
+                    return false;
+                }
+
+                $chosen = $candidates[0];
+                $probe->addBlock($chosen);
+                unset($pool[spl_object_id($chosen)]);
+            }
+
+            return true;
         };
 
         // ══════════════════════════════════════════════════════════════════
@@ -278,7 +515,7 @@ final class ShiftAssigner
 
         foreach ($morningPool as $mb) {
             // Ако е зададен целеви брой и вече сме го достигнали — спираме
-            if ($targetMorning > 0 && $morningCounter >= $targetMorning) {
+            if ($targetMorning > 0 && $morningCount >= $targetMorning) {
                 break;
             }
 
@@ -299,16 +536,39 @@ final class ShiftAssigner
             $processedMorningKeys[$key] = true;
             $popBlock($mb);
 
+            if (!$canReachMinimumDuration($s, $unassigned, $params, $params->minMorningSeconds())) {
+                $discardShift($s);
+                $warnOnce(
+                    'unreachable-morning-phase2',
+                    sprintf(
+                        'Част от ранните блокове не могат да достигнат минимум %d:%02d за сутрешна смяна и се оставят за други типове смени.',
+                        intdiv($params->minMorningMinutes, 60),
+                        $params->minMorningMinutes % 60,
+                    )
+                );
+                continue;
+            }
+
             // Разширяваме алчно с допълнителни блокове (вкл. кръстосани влакове)
             $extendShift($s, $unassigned, $params, function (DrivingBlock $b) use (&$processedMorningKeys) {
                 $k = $b->routeId . ':' . $b->blockIndex;
-                if (isset($processedMorningKeys[$k])) {
-                    return false;
-                }
-                $processedMorningKeys[$k] = true;
-
-                return true;
+                return !isset($processedMorningKeys[$k]);
+            }, function (DrivingBlock $b) use (&$processedMorningKeys): void {
+                $processedMorningKeys[$b->routeId . ':' . $b->blockIndex] = true;
             });
+
+            if ($s->totalDuration() < $params->minMorningSeconds()) {
+                $discardShift($s);
+                $warnOnce(
+                    'short-morning-phase2',
+                    sprintf(
+                        'Не може да се изгради валидна сутрешна смяна >= %d:%02d в рамките на текущите ограничения. Къси сутрешни смени не се допускат.',
+                        intdiv($params->minMorningMinutes, 60),
+                        $params->minMorningMinutes % 60,
+                    )
+                );
+                continue;
+            }
 
             $shifts[] = $s;
         }
@@ -328,7 +588,7 @@ final class ShiftAssigner
 
         foreach ($nightPool as $nb) {
             // Ако е зададен целеви брой и вече сме го достигнали — спираме
-            if ($targetNight > 0 && $nightCounter >= $targetNight) {
+            if ($targetNight > 0 && $nightCount >= $targetNight) {
                 break;
             }
 
@@ -344,19 +604,42 @@ final class ShiftAssigner
             $processedNightKeys[$key] = true;
             $popBlock($nb);
 
+            if (!$canReachMinimumDuration($s, $unassigned, $params, $params->minNightSeconds(), $isNightCandidate)) {
+                $discardShift($s);
+                $warnOnce(
+                    'unreachable-night-phase3',
+                    sprintf(
+                        'Част от късните блокове не могат да достигнат минимум %d:%02d за нощна смяна и се оставят за други типове смени.',
+                        intdiv($params->minNightMinutes, 60),
+                        $params->minNightMinutes % 60,
+                    )
+                );
+                continue;
+            }
+
             // Разширяваме алчно само с допълнителни нощни блокове
             $extendShift($s, $unassigned, $params, function (DrivingBlock $b) use ($isNightCandidate, &$processedNightKeys) {
                 if (!$isNightCandidate($b)) {
                     return false;
                 }
                 $k = $b->routeId . ':' . $b->blockIndex;
-                if (isset($processedNightKeys[$k])) {
-                    return false;
-                }
-                $processedNightKeys[$k] = true;
-
-                return true;
+                return !isset($processedNightKeys[$k]);
+            }, function (DrivingBlock $b) use (&$processedNightKeys): void {
+                $processedNightKeys[$b->routeId . ':' . $b->blockIndex] = true;
             });
+
+            if ($s->totalDuration() < $params->minNightSeconds()) {
+                $discardShift($s);
+                $warnOnce(
+                    'short-night-phase3',
+                    sprintf(
+                        'Не може да се изгради валидна нощна смяна >= %d:%02d в рамките на текущите ограничения. Къси нощни смени не се допускат.',
+                        intdiv($params->minNightMinutes, 60),
+                        $params->minNightMinutes % 60,
+                    )
+                );
+                continue;
+            }
 
             $shifts[] = $s;
         }
@@ -369,10 +652,11 @@ final class ShiftAssigner
         // или когато трябва да се запазят блокове за оставащите смени.
 
         $targetDay = $params->targetDayShifts;
+        $rejectedDaySeedKeys = [];
 
         while (!empty($unassigned)) {
             // Ако е зададен целеви брой и вече сме го достигнали — спираме
-            if ($targetDay > 0 && $dayCounter >= $targetDay) {
+            if ($targetDay > 0 && $dayCount >= $targetDay) {
                 break;
             }
 
@@ -385,6 +669,11 @@ final class ShiftAssigner
             // Намираме първи блок, който се вписва в часовите граници на дневна смяна
             $first = null;
             foreach ($daySorted as $candidate) {
+                $candidateKey = $candidate->routeId . ':' . $candidate->blockIndex;
+                if (isset($rejectedDaySeedKeys[$candidateKey])) {
+                    continue;
+                }
+
                 if ($candidate->boardTime >= $params->dayStartTimeSeconds
                     && $candidate->alightTime <= $params->dayEndTimeSeconds) {
                     $first = $candidate;
@@ -429,7 +718,7 @@ final class ShiftAssigner
                 // вече е над минималната продължителност — запазваме блокове
                 // за оставащите смени (за да не изядем всичко в една смяна)
                 if ($targetDay > 0 && $s->totalDuration() >= $params->minDaySeconds()) {
-                    $remainingShiftsNeeded = $targetDay - $dayCounter;
+                    $remainingShiftsNeeded = $targetDay - $dayCount;
                     if ($remainingShiftsNeeded > 1 && \count($unassigned) <= $remainingShiftsNeeded * 2) {
                         break;
                     }
@@ -443,6 +732,20 @@ final class ShiftAssigner
                 if ($s->totalDuration() >= $params->dayTargetSeconds()) {
                     break;
                 }
+            }
+
+            if ($s->totalDuration() < $params->minDaySeconds()) {
+                $discardShift($s);
+                $rejectedDaySeedKeys[$first->routeId . ':' . $first->blockIndex] = true;
+                $warnOnce(
+                    'short-day-phase4',
+                    sprintf(
+                        'Не може да се изгради валидна дневна смяна >= %d:%02d в рамките на текущите ограничения. Увеличете броя на смените или коригирайте параметрите.',
+                        intdiv($params->minDayMinutes, 60),
+                        $params->minDayMinutes % 60,
+                    )
+                );
+                continue;
             }
 
             $shifts[] = $s;
@@ -501,18 +804,13 @@ final class ShiftAssigner
                     // Определяне на тип — съобразяване с целевите бройки.
                     // Ако целта за естествения тип е вече достигната, избираме
                     // дневна смяна като универсален резервен тип.
-                    $naturalType = GeneratedShift::TYPE_NIGHT;
-                    if ($sb->boardTime < $params->morningThresholdSeconds) {
-                        $naturalType = GeneratedShift::TYPE_MORNING;
-                    } elseif ($sb->boardTime < $params->nightThresholdSeconds) {
-                        $naturalType = GeneratedShift::TYPE_DAY;
-                    }
+                    $naturalType = $naturalShiftTypeForBlock($sb);
 
                     // Проверяваме дали целта е зададена И достигната
                     $typeTargets = [
-                        GeneratedShift::TYPE_MORNING => [$params->targetMorningShifts, $morningCounter],
-                        GeneratedShift::TYPE_DAY     => [$params->targetDayShifts, $dayCounter],
-                        GeneratedShift::TYPE_NIGHT   => [$params->targetNightShifts, $nightCounter],
+                        GeneratedShift::TYPE_MORNING => [$params->targetMorningShifts, $morningCount],
+                        GeneratedShift::TYPE_DAY     => [$params->targetDayShifts, $dayCount],
+                        GeneratedShift::TYPE_NIGHT   => [$params->targetNightShifts, $nightCount],
                     ];
 
                     $sweepType = $naturalType;
@@ -532,9 +830,54 @@ final class ShiftAssigner
                         }
                     }
 
+                    [$resolvedTarget, $resolvedCurrent] = $typeTargets[$sweepType];
+                    if ($resolvedTarget > 0 && $resolvedCurrent >= $resolvedTarget) {
+                        $typeLabel = match ($naturalType) {
+                            GeneratedShift::TYPE_MORNING => 'сутрешни',
+                            GeneratedShift::TYPE_DAY => 'дневни',
+                            default => 'нощни',
+                        };
+                        $warnOnce(
+                            'target-limit-' . $naturalType,
+                            sprintf(
+                                'Достигнат е зададеният лимит за %s смени и остават непокрити блокове. Необходимо е операторът да увеличи броя на смените.',
+                                $typeLabel,
+                            )
+                        );
+                        continue;
+                    }
+
                     $s = $newShift($sweepType);
                     $s->addBlock($sb);
                     $popBlock($sb);
+
+                    if ($s->shiftType === GeneratedShift::TYPE_MORNING
+                        && !$canReachMinimumDuration($s, $unassigned, $params, $params->minMorningSeconds())) {
+                        $discardShift($s);
+                        $warnOnce(
+                            'unreachable-morning-phase5',
+                            sprintf(
+                                'Остават блокове, които не могат да формират валидна сутрешна смяна >= %d:%02d. Нужно е преразпределение към дневни смени или промяна на параметрите.',
+                                intdiv($params->minMorningMinutes, 60),
+                                $params->minMorningMinutes % 60,
+                            )
+                        );
+                        continue;
+                    }
+
+                    if ($s->shiftType === GeneratedShift::TYPE_NIGHT
+                        && !$canReachMinimumDuration($s, $unassigned, $params, $params->minNightSeconds())) {
+                        $discardShift($s);
+                        $warnOnce(
+                            'unreachable-night-phase5',
+                            sprintf(
+                                'Остават блокове, които не могат да формират валидна нощна смяна >= %d:%02d. Нужно е преразпределение към други смени или промяна на параметрите.',
+                                intdiv($params->minNightMinutes, 60),
+                                $params->minNightMinutes % 60,
+                            )
+                        );
+                        continue;
+                    }
 
                     // Разширяваме алчно без тип-филтър
                     while (true) {
@@ -557,8 +900,115 @@ final class ShiftAssigner
                         $popBlock($candidates[0]);
                     }
 
+                    if ($s->shiftType === GeneratedShift::TYPE_DAY && $s->totalDuration() < $params->minDaySeconds()) {
+                        $discardShift($s);
+                        $warnOnce(
+                            'short-day-phase5',
+                            sprintf(
+                                'Остават блокове, които изискват кратка дневна смяна под %d:%02d. Генерирането спира и е нужно операторът да увеличи броя на смените.',
+                                intdiv($params->minDayMinutes, 60),
+                                $params->minDayMinutes % 60,
+                            )
+                        );
+                        continue;
+                    }
+
+                    if ($s->shiftType === GeneratedShift::TYPE_MORNING && $s->totalDuration() < $params->minMorningSeconds()) {
+                        $discardShift($s);
+                        $warnOnce(
+                            'short-morning-phase5',
+                            sprintf(
+                                'Остават блокове, които изискват кратка сутрешна смяна под %d:%02d. Генерирането спира и е нужно операторът да увеличи броя на смените или да промени параметрите.',
+                                intdiv($params->minMorningMinutes, 60),
+                                $params->minMorningMinutes % 60,
+                            )
+                        );
+                        continue;
+                    }
+
+                    if ($s->shiftType === GeneratedShift::TYPE_NIGHT && $s->totalDuration() < $params->minNightSeconds()) {
+                        $discardShift($s);
+                        $warnOnce(
+                            'short-night-phase5',
+                            sprintf(
+                                'Остават блокове, които изискват кратка нощна смяна под %d:%02d. Генерирането спира и е нужно операторът да увеличи броя на смените или да промени параметрите.',
+                                intdiv($params->minNightMinutes, 60),
+                                $params->minNightMinutes % 60,
+                            )
+                        );
+                        continue;
+                    }
+
                     $shifts[] = $s;
                 }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // ── Фаза 6: Пренареждане за максимално покритие ─────────────
+        // ══════════════════════════════════════════════════════════════════
+        // Ако след Фази 0–5 има непокрити блокове, тази фаза създава
+        // допълнителни смени БЕЗ ограничение за минимална продължителност
+        // и целеви бройки. Целта е максимално покритие на графика.
+        if (!empty($unassigned)) {
+            $forceBlocks = array_values($unassigned);
+            usort($forceBlocks, fn(DrivingBlock $a, DrivingBlock $b) => $a->boardTime <=> $b->boardTime);
+
+            foreach ($forceBlocks as $fb) {
+                if (!isset($unassigned[spl_object_id($fb)])) {
+                    continue;
+                }
+
+                // Стъпка А: Опит за добавяне към съществуваща смяна
+                $bestShift = null;
+                $bestGap = PHP_INT_MAX;
+                foreach ($shifts as $existingShift) {
+                    if ($existingShift->canAddBlock($fb, $params)) {
+                        $g = $fb->boardTime - $existingShift->endTime();
+                        if ($g >= 0 && $g < $bestGap) {
+                            $bestGap = $g;
+                            $bestShift = $existingShift;
+                        }
+                    }
+                }
+
+                if ($bestShift !== null) {
+                    $bestShift->addBlock($fb);
+                    $popBlock($fb);
+                    continue;
+                }
+
+                // Стъпка Б: Нова допълнителна смяна (без ограничение за мин. продължителност)
+                $type = $naturalShiftTypeForBlock($fb);
+                $s = $newShift($type);
+                $s->addBlock($fb);
+                $popBlock($fb);
+
+                // Разширяване алчно
+                while (true) {
+                    $last = $s->lastBlock();
+                    if ($last === null) {
+                        break;
+                    }
+                    $candidates = array_values(array_filter(
+                        $unassigned,
+                        fn(DrivingBlock $b) => $b->boardTime >= $last->alightTime && $s->canAddBlock($b, $params),
+                    ));
+                    usort($candidates, fn(DrivingBlock $a, DrivingBlock $b) => $a->boardTime <=> $b->boardTime);
+                    if (empty($candidates)) {
+                        break;
+                    }
+                    $s->addBlock($candidates[0]);
+                    $popBlock($candidates[0]);
+                }
+
+                $shifts[] = $s;
+                $this->feedback[] = sprintf(
+                    '%s: допълнителна смяна за покриване на непокрит участък (продължителност %d:%02d)',
+                    $s->shiftId,
+                    intdiv($s->totalDuration(), 3600),
+                    intdiv($s->totalDuration() % 3600, 60),
+                );
             }
         }
 
@@ -574,6 +1024,37 @@ final class ShiftAssigner
                     'Блок маршрут %s (влак %d), %s→%s [%s-%s] не е присвоен — няма съвместима смяна в рамките на зададения брой',
                     $b->routeId, $b->train, $b->boardStation, $b->alightStation,
                     $b->boardTimeStr(), $b->alightTimeStr(),
+                );
+            }
+
+            $unassignedByType = [
+                GeneratedShift::TYPE_MORNING => 0,
+                GeneratedShift::TYPE_DAY => 0,
+                GeneratedShift::TYPE_NIGHT => 0,
+            ];
+
+            foreach ($this->unassignedBlocks as $block) {
+                $unassignedByType[$naturalShiftTypeForBlock($block)]++;
+            }
+
+            if ($unassignedByType[GeneratedShift::TYPE_MORNING] > 0) {
+                $this->feedback[] = sprintf(
+                    'Остават %d непокрити блока за сутрешни смени. Операторът трябва да увеличи броя на сутрешните смени или да промени параметрите.',
+                    $unassignedByType[GeneratedShift::TYPE_MORNING],
+                );
+            }
+
+            if ($unassignedByType[GeneratedShift::TYPE_DAY] > 0) {
+                $this->feedback[] = sprintf(
+                    'Остават %d непокрити блока за дневни смени. Операторът трябва да увеличи броя на дневните смени, защото къси дневни смени не се допускат.',
+                    $unassignedByType[GeneratedShift::TYPE_DAY],
+                );
+            }
+
+            if ($unassignedByType[GeneratedShift::TYPE_NIGHT] > 0) {
+                $this->feedback[] = sprintf(
+                    'Остават %d непокрити блока за нощни смени. Операторът трябва да увеличи броя на нощните смени или да промени параметрите.',
+                    $unassignedByType[GeneratedShift::TYPE_NIGHT],
                 );
             }
         }
@@ -605,22 +1086,22 @@ final class ShiftAssigner
         }
 
         // ── Обратна връзка: несъответствие с целевия брой смени ──
-        if ($targetMorning > 0 && $morningCounter !== $targetMorning) {
+        if ($targetMorning > 0 && $morningCount !== $targetMorning) {
             $this->feedback[] = sprintf(
                 'Зададени %d сутрешни смени, генерирани %d — недостатъчни блокове за целевия брой',
-                $targetMorning, $morningCounter,
+                $targetMorning, $morningCount,
             );
         }
-        if ($targetDay > 0 && $dayCounter !== $targetDay) {
+        if ($targetDay > 0 && $dayCount !== $targetDay) {
             $this->feedback[] = sprintf(
                 'Зададени %d дневни смени, генерирани %d — недостатъчни блокове за целевия брой',
-                $targetDay, $dayCounter,
+                $targetDay, $dayCount,
             );
         }
-        if ($targetNight > 0 && $nightCounter !== $targetNight) {
+        if ($targetNight > 0 && $nightCount !== $targetNight) {
             $this->feedback[] = sprintf(
                 'Зададени %d нощни смени, генерирани %d — недостатъчни блокове за целевия брой',
-                $targetNight, $nightCounter,
+                $targetNight, $nightCount,
             );
         }
 
@@ -639,23 +1120,220 @@ final class ShiftAssigner
             GeneratedShift::TYPE_DAY => 1,
             GeneratedShift::TYPE_NIGHT => 2,
         ];
-        $extractNumber = function (string $shiftId): int {
-            // СМ12-Д → 12
-            if (preg_match('/(\d+)/', $shiftId, $m)) {
-                return (int) $m[1];
-            }
-
-            return 0;
-        };
-        usort($shifts, function (GeneratedShift $a, GeneratedShift $b) use ($typeOrder, $extractNumber) {
+        usort($shifts, function (GeneratedShift $a, GeneratedShift $b) use ($typeOrder) {
             $ta = $typeOrder[$a->shiftType] ?? 9;
             $tb = $typeOrder[$b->shiftType] ?? 9;
             if ($ta !== $tb) {
                 return $ta <=> $tb;
             }
 
-            return $extractNumber($a->shiftId) <=> $extractNumber($b->shiftId);
+            // В рамките на типа — сортираме по начално време на смяната
+            return $a->startTime() <=> $b->startTime();
         });
+
+        // ── Преномериране: последователни номера за всеки тип (СМ1, СМ2, …) ──
+        $typeCounters = [
+            GeneratedShift::TYPE_MORNING => 0,
+            GeneratedShift::TYPE_DAY => 0,
+            GeneratedShift::TYPE_NIGHT => 0,
+        ];
+        foreach ($shifts as $s) {
+            $typeCounters[$s->shiftType]++;
+            $s->shiftId = 'СМ' . $typeCounters[$s->shiftType] . '-' . $s->shiftType;
+        }
+
+        return $shifts;
+    }
+
+    /**
+     * Опитва да използва OR-Tools solver за разпределяне на блокове.
+     *
+     * @param DrivingBlock[]       $allBlocks    Всички блокове
+     * @param GenerationParameters $params       Параметри
+     * @param GeneratedShift[]     $phase0Shifts Вече генерирани Phase 0 нощни смени
+     * @param DrivingBlock[]       $unassigned   Оставащи неприсвоени блокове (по spl_object_id)
+     *
+     * @return GeneratedShift[]|null Null ако солвърът е недостъпен или неуспешен
+     */
+    private function trySolverAssignment(
+        array $allBlocks,
+        GenerationParameters $params,
+        array $phase0Shifts,
+        array &$unassigned,
+    ): ?array {
+        if (!$this->solverClient->isAvailable()) {
+            $this->feedback[] = 'OR-Tools solver не е достъпен — използва се greedy алгоритъм.';
+
+            return null;
+        }
+
+        // Построяваме map: block object → index in allBlocks
+        $blockIndex = [];
+        foreach ($allBlocks as $idx => $block) {
+            $blockIndex[spl_object_id($block)] = $idx;
+        }
+
+        // Phase 0 block indices (grouped by shift)
+        $phase0BlockIds = [];
+        foreach ($phase0Shifts as $shift) {
+            $group = [];
+            foreach ($shift->entries as $entry) {
+                // Намираме оригиналния индекс (не коригирания +86400 блок)
+                foreach ($allBlocks as $idx => $block) {
+                    if ($block->routeId === $entry->block->routeId
+                        && $block->blockIndex === $entry->block->blockIndex
+                        && $block->train === $entry->block->train) {
+                        $group[] = $idx;
+                        break;
+                    }
+                }
+            }
+            if (!empty($group)) {
+                $phase0BlockIds[] = $group;
+            }
+        }
+
+        $result = $this->solverClient->solve($allBlocks, $params, $phase0BlockIds);
+        if ($result === null) {
+            $this->feedback[] = 'OR-Tools solver грешка — използва се greedy алгоритъм.';
+
+            return null;
+        }
+
+        $status = $result['status'] ?? 'unknown';
+        if (\in_array($status, ['infeasible', 'timeout', 'error'], true)) {
+            $this->feedback[] = sprintf(
+                'OR-Tools solver: %s — използва се greedy алгоритъм.',
+                $status,
+            );
+            foreach ($result['feedback'] ?? [] as $fb) {
+                $this->feedback[] = $fb;
+            }
+
+            return null;
+        }
+
+        // Построяваме GeneratedShift[] от солвърния резултат
+        $solverShifts = $this->buildShiftsFromSolver($result, $allBlocks, $params, $phase0Shifts);
+
+        // Solver feedback
+        foreach ($result['feedback'] ?? [] as $fb) {
+            $this->feedback[] = $fb;
+        }
+
+        $this->feedback[] = sprintf(
+            'OR-Tools solver: статус=%s, цел=%.0f, време=%dms',
+            $status,
+            $result['objective_value'] ?? 0,
+            $result['solve_time_ms'] ?? 0,
+        );
+
+        // Обновяваме unassigned
+        $assignedIndices = new \SplFixedArray(0);
+        $allAssigned = [];
+        foreach ($result['shifts'] ?? [] as $shiftData) {
+            foreach ($shiftData['block_indices'] ?? [] as $bi) {
+                $allAssigned[$bi] = true;
+            }
+        }
+        // Phase 0 blocks
+        foreach ($phase0BlockIds as $group) {
+            foreach ($group as $bi) {
+                $allAssigned[$bi] = true;
+            }
+        }
+
+        $this->unassignedBlocks = [];
+        foreach ($allBlocks as $idx => $block) {
+            if (!isset($allAssigned[$idx])) {
+                $this->unassignedBlocks[] = $block;
+            }
+        }
+
+        if (!empty($result['unassigned_block_indices'])) {
+            foreach ($result['unassigned_block_indices'] as $bi) {
+                if (isset($allBlocks[$bi])) {
+                    $this->feedback[] = sprintf(
+                        'Блок маршрут %s (влак %d), %s→%s [%s-%s] не е присвоен от солвъра',
+                        $allBlocks[$bi]->routeId, $allBlocks[$bi]->train,
+                        $allBlocks[$bi]->boardStation, $allBlocks[$bi]->alightStation,
+                        $allBlocks[$bi]->boardTimeStr(), $allBlocks[$bi]->alightTimeStr(),
+                    );
+                }
+            }
+        }
+
+        return $solverShifts;
+    }
+
+    /**
+     * Построява GeneratedShift[] от отговора на солвъра + Phase 0 смените.
+     *
+     * @param array                $result       Солвър response
+     * @param DrivingBlock[]       $allBlocks
+     * @param GenerationParameters $params
+     * @param GeneratedShift[]     $phase0Shifts
+     *
+     * @return GeneratedShift[]
+     */
+    private function buildShiftsFromSolver(
+        array $result,
+        array $allBlocks,
+        GenerationParameters $params,
+        array $phase0Shifts,
+    ): array {
+        $shifts = $phase0Shifts;
+
+        foreach ($result['shifts'] ?? [] as $shiftData) {
+            $shiftType = $shiftData['shift_type'] ?? GeneratedShift::TYPE_DAY;
+            // Временен ID — ще се преномерира долу
+            $shift = new GeneratedShift('tmp', $shiftType);
+
+            foreach ($shiftData['block_indices'] ?? [] as $bi) {
+                if (isset($allBlocks[$bi])) {
+                    $shift->addBlock($allBlocks[$bi]);
+                }
+            }
+
+            if (!empty($shift->entries)) {
+                $shifts[] = $shift;
+            }
+        }
+
+        // Зануляваме restAfter на последния запис във всяка смяна
+        foreach ($shifts as $s) {
+            if (!empty($s->entries)) {
+                $lastEntry = end($s->entries);
+                $lastEntry->restAfter = null;
+            }
+        }
+
+        // Сортираме: С → Д → Н, в рамките на типа по начално време
+        $typeOrder = [
+            GeneratedShift::TYPE_MORNING => 0,
+            GeneratedShift::TYPE_DAY => 1,
+            GeneratedShift::TYPE_NIGHT => 2,
+        ];
+        usort($shifts, function (GeneratedShift $a, GeneratedShift $b) use ($typeOrder) {
+            $ta = $typeOrder[$a->shiftType] ?? 9;
+            $tb = $typeOrder[$b->shiftType] ?? 9;
+            if ($ta !== $tb) {
+                return $ta <=> $tb;
+            }
+
+            return $a->startTime() <=> $b->startTime();
+        });
+
+        // Последователна номерация: СМ1-С, СМ2-С, … СМ1-Д, СМ2-Д, … СМ1-Н, …
+        $typeCounters = [
+            GeneratedShift::TYPE_MORNING => 0,
+            GeneratedShift::TYPE_DAY => 0,
+            GeneratedShift::TYPE_NIGHT => 0,
+        ];
+        foreach ($shifts as $s) {
+            $typeCounters[$s->shiftType]++;
+            $s->shiftId = 'СМ' . $typeCounters[$s->shiftType] . '-' . $s->shiftType;
+        }
 
         return $shifts;
     }

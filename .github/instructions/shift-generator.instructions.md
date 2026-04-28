@@ -14,7 +14,7 @@ TrainSchedule → ScheduleParser → BlockGenerator → ShiftAssigner → ShiftV
 Orchestrated by `ShiftGeneratorService`, exposed via `ShiftGeneratorController`.
 
 - **ScheduleParser**: Reads `TrainScheduleLine` entities → `RouteSegment[]`. Groups by train number, normalizes stations (strips `><` terminal markers, normalizes depot variants → `'Depo'`), handles midnight crossing, splits routes 101/102 by consecutive Depo entries into `-сутрин`/`-следобед`/`-нощен` segments.
-- **BlockGenerator**: Splits `RouteSegment[]` into `DrivingBlock[]` — the atomic assignment unit. Greedy forward scan: maximize block length within `maxDriveMinutes`, prefer crew-change stations as boundaries. Backward scan respects `minDriveMinutes`.
+- **BlockGenerator**: Splits `RouteSegment[]` into `DrivingBlock[]` using deterministic boundary-station cutting. Boundaries are crew-change stations (`14_1`, `14_2`) and route endpoints (Depo). Each block spans exactly one boundary-to-boundary segment (e.g. `Depo→14_1`, `14_1→14_2`). If the distance between two boundaries exceeds `maxDriveMinutes`, the segment is subdivided internally. ShiftAssigner then combines consecutive same-route blocks via same-route continuation up to `maxDriveMinutes`.
 - **ShiftAssigner**: 6-phase greedy assignment of blocks → shifts (see Algorithm section).
 - **ShiftValidator**: 7 validation checks on generated shifts (see Validation section).
 - **ShiftScheduleMapper**: Persists `GeneratedShift[]` to `ShiftScheduleDetails` entities. Computes `at_doctor`, `at_duty_officer`, `night_work`, `zero_time`, route display names.
@@ -51,6 +51,47 @@ Consequences:
 
 **Never** treat cross-train handoff as rest. Do **not** add a `minHandoffRestMinutes` parameter — it was removed intentionally.
 
+## Same-Route Continuation — Block Merging Semantics
+
+A same-route continuation means two **consecutive blocks from the same route** (same `routeId`, `blockIndex` N and N+1) are joined in a shift. The boundary between them is an **artificial cut** placed by BlockGenerator at a crew-change station — the driver does NOT stop.
+
+Detection criteria (all must be true):
+1. Previous block's `routeId` === next block's `routeId`
+2. Next block's `blockIndex` === previous block's `blockIndex` + 1
+3. Gap between blocks ≤ 1 second (should be 0 — same time point)
+
+Consequences:
+- The gap **counts toward the continuous drive chain** (total chain must stay ≤ `maxDriveMinutes`)
+- **No minimum rest check** is applied
+- **No crew-change station validation** is applied (it's an internal boundary)
+- ShiftAssigner greedily merges consecutive same-route blocks until `maxDriveMinutes` is reached
+
+### Transition Type Summary
+
+| Transition | Condition | Crew-change? | minRest? | Continuous driving? |
+|---|---|---|---|---|
+| **Normal** | Different routes or non-consecutive blocks | **Yes** | **Yes** | New chain |
+| **Cross-train handoff** | Different train, same base station, ≤20min | No | No | **Yes** — continues chain |
+| **Same-route continuation** | Same route, consecutive blockIndex, gap≈0 | No | No | **Yes** — continues chain |
+
+### Example: Flexible Block Combination
+
+Route `101-сутрин`: `Depo → ... → 14_1 → ... → 14_2 → ... → 14_1 → ... → Depo`
+
+BlockGenerator creates minimal blocks:
+- Block 0: `Depo→14_1` (45min)
+- Block 1: `14_1→14_2` (55min)
+- Block 2: `14_2→14_1` (50min)
+- Block 3: `14_1→Depo` (40min)
+
+ShiftAssigner can combine:
+- Block 0 alone (45min) — minimal
+- Block 0+1 via same-route continuation (100min)
+- Block 0+1+2 via same-route continuation (150min = maxDrive limit)
+- Block 3 must start a new chain (Block 2→3 would exceed maxDrive)
+
+**Never** bypass `maxDriveMinutes` via same-route continuation. The continuous drive chain is always enforced.
+
 ## Station Naming Conventions
 
 - Terminal markers `>` and `<` are stripped by `normalizeStation()` in ScheduleParser and `stationBase()` in GenerationParameters
@@ -62,7 +103,20 @@ Consequences:
 ## Algorithm: 6-Phase Greedy Assignment
 
 ### Phase 0: Combined Night Shifts (midnight crossing)
-Hardcoded pairs: `107→100`, `108→101-morning`. Takes last block of route A + first block of route B (with +86400 time adjustment). Creates night shift if rest ≥ minRest and total ≤ maxNight.
+Algorithmic continuation, not hardcoded pairs. If the last block of a train route after `23:00` ends at a station that is not `Depo`, then on the next morning the algorithm must find the same station and assign the first departing train from that station to the same night shift, even if the train has a different route or train number. The continuation uses `+86400` time adjustment for the morning block and remains valid only if the resulting shift satisfies the configured rest and max-duration rules.
+
+Selection rules for the morning continuation:
+- only routes ending after `23:00` are eligible;
+- the endpoint must be a station, not `Depo`;
+- the next block must start from the same base station on the next morning;
+- choose the earliest departing compatible block from that station;
+- the train number does not need to match the previous route.
+
+Shift numbering rules for algorithmic night continuations:
+- the generated shift code should prefer the number of the station that determines the continuation when that does not violate shift-number uniqueness;
+- shift numbers may leave the usual contiguous sequence if needed;
+- for example, if night shifts are usually numbered from `1` to `15`, but the qualifying station is `18`, the assigned shift code may be `СМ18-Н`;
+- uniqueness of shift IDs remains mandatory across the whole generated schedule.
 
 ### Phase 1: Classification
 - Morning candidate: `boardTime < morningThresholdSeconds`
@@ -91,13 +145,13 @@ Remaining unassigned blocks within `dayStartTime..dayEndTime`. Greedy extension 
 
 | # | Check | Level |
 |---|---|---|
-| 1 | Continuous drive chains ≤ maxDrive (cross-train handoff gaps included in chain) | error |
-| 2 | Rest periods ≥ minRest (cross-train handoffs skipped — not rest) | error |
+| 1 | Continuous drive chains ≤ maxDrive (cross-train handoff gaps and same-route continuation gaps included in chain) | error |
+| 2 | Rest periods ≥ minRest (cross-train handoffs and same-route continuations skipped — not rest) | error |
 | 3 | Max shift duration per type | error |
 | 4 | Min shift duration per type | warning |
 | 5 | 100% block coverage | error |
 | 6 | No duplicate block assignments | error |
-| 7 | Crew changes at allowed stations (handoff transitions skipped) | error |
+| 7 | Crew changes at allowed stations (handoff and same-route transitions skipped) | error |
 
 ## Key Parameters (GenerationParameters defaults)
 
