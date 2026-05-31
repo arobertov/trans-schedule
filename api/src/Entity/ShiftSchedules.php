@@ -18,6 +18,7 @@ use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
 use Symfony\Component\Serializer\Annotation\Groups;
+use Symfony\Component\Serializer\Attribute\SerializedName;
 use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: ShiftSchedulesRepository::class)]
@@ -30,7 +31,7 @@ use Symfony\Component\Validator\Constraints as Assert;
     paginationClientEnabled: true,
     paginationClientItemsPerPage: true,
     operations: [
-        new GetCollection(),
+        new GetCollection(normalizationContext: ['groups' => ['schedule:list']]),
         new Get(),
         new Post(),
         new Put(),
@@ -48,7 +49,7 @@ class ShiftSchedules
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
-    #[Groups(['schedule:read', 'shift_detail:read'])]
+    #[Groups(['schedule:read', 'schedule:list', 'shift_detail:read'])]
     #[ApiProperty(
         identifier: true,
         description: 'Уникален идентификатор'
@@ -56,7 +57,7 @@ class ShiftSchedules
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
-    #[Groups(['schedule:read', 'schedule:write', 'shift_detail:read'])]
+    #[Groups(['schedule:read', 'schedule:list', 'schedule:write', 'shift_detail:read'])]
     #[Assert\NotBlank(message: 'Името на графика е задължително')]
     #[Assert\Length(
         min: 1,
@@ -71,7 +72,7 @@ class ShiftSchedules
     private ?string $name = null;
 
     #[ORM\Column(type: 'text', nullable: true)]
-    #[Groups(['schedule:read', 'schedule:write'])]  
+    #[Groups(['schedule:read', 'schedule:list', 'schedule:write'])]
     #[ApiProperty(
         description: 'Описание на графика',
         example: 'Зимен/Летен със 16/11 смени.'
@@ -79,7 +80,7 @@ class ShiftSchedules
     private ?string $description = null;
 
     #[ORM\OneToMany(targetEntity: ShiftScheduleDetails::class, mappedBy: 'shift_schedule', cascade: ['persist', 'remove'], orphanRemoval: true)]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:read', 'schedule:list', 'schedule:write'])]
     #[ApiProperty(
         description: 'Смени в този график',
         readableLink: false,
@@ -88,7 +89,7 @@ class ShiftSchedules
     private Collection $details;
 
     #[ORM\Column]
-    #[Groups(['schedule:read'])]
+    #[Groups(['schedule:read', 'schedule:list'])]
     #[ApiProperty(
         description: 'Дата на създаване',
         readable: true,
@@ -97,7 +98,7 @@ class ShiftSchedules
     private ?\DateTimeImmutable $created_at = null;
 
     #[ORM\Column]
-    #[Groups(['schedule:read'])]
+    #[Groups(['schedule:read', 'schedule:list'])]
     #[ApiProperty(
         description: 'Дата на последна промяна',
         readable: true,
@@ -106,12 +107,15 @@ class ShiftSchedules
     private ?\DateTimeImmutable $updated_at = null;
 
     #[ORM\Column(length: 20, enumType: ShiftScheduleStatus::class)]
-    #[Groups(['schedule:read', 'schedule:write'])]
+    #[Groups(['schedule:read', 'schedule:list', 'schedule:write'])]
     #[ApiProperty(
         description: 'Статус на графика (проект/активен)',
         example: 'проект'
     )]
     private ShiftScheduleStatus $status = ShiftScheduleStatus::Draft;
+
+    #[ORM\OneToOne(mappedBy: 'schedule', targetEntity: ShiftScheduleWorkbook::class, cascade: ['persist', 'remove'], fetch: 'LAZY', orphanRemoval: true)]
+    private ?ShiftScheduleWorkbook $workbook = null;
 
     public function __construct()
     {
@@ -203,6 +207,34 @@ class ShiftSchedules
     public function setStatus(ShiftScheduleStatus $status): static
     {
         $this->status = $status;
+        return $this;
+    }
+
+    #[SerializedName('workbook_snapshot')]
+    #[Groups(['schedule:read'])]
+    #[ApiProperty(
+        description: 'Снимка на работната книга (Univer формат)',
+        readable: true,
+        writable: false
+    )]
+    public function getWorkbookSnapshot(): ?array
+    {
+        return $this->workbook?->getSnapshot();
+    }
+
+    #[SerializedName('workbook_snapshot')]
+    #[Groups(['schedule:write'])]
+    public function setWorkbookSnapshot(?array $workbook_snapshot): static
+    {
+        if ($workbook_snapshot === null) {
+            $this->workbook = null;
+        } else {
+            if ($this->workbook === null) {
+                $this->workbook = new ShiftScheduleWorkbook();
+                $this->workbook->setSchedule($this);
+            }
+            $this->workbook->setSnapshot($workbook_snapshot);
+        }
         return $this;
     }
 }

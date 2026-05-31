@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
@@ -12,11 +14,13 @@ import "@univerjs/docs-ui/lib/index.css";
 import "@univerjs/sheets-formula-ui/lib/index.css";
 import {
     ICommandService,
-    IUniverInstanceService,
     LogLevel,
     Univer,
     UniverInstanceType,
 } from "@univerjs/core";
+// FUniver is bundled inside @univerjs/core at version 0.15.x
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import { FUniver } from "@univerjs/core/facade";
 import { defaultTheme } from "@univerjs/design";
 import { UniverDocsPlugin } from "@univerjs/docs";
 import { UniverDocsUIPlugin } from "@univerjs/docs-ui";
@@ -35,6 +39,10 @@ type ShiftScheduleRecord = {
     "@id"?: string;
     name?: string;
     description?: string;
+    workbook_snapshot?: {
+        workbook: Record<string, any>;
+        rowMeta: SheetRowMeta[];
+    } | null;
 };
 
 type ShiftRoute = {
@@ -851,15 +859,20 @@ const captureSnapshotFromSheet = (
         }
     });
 
+    // Only include details that still have at least one row tracked in rowMeta
+    const activeDetailIds = new Set(rowMeta.map((m) => m.detailId));
+
     return {
         schedule: {
             name: formatPlainValue(sheet.getCell(NAME_ROW, 0)?.v) || schedule.name,
             description: formatPlainValue(sheet.getCell(DESCRIPTION_ROW, 0)?.v) || schedule.description,
         },
-        details: Array.from(detailsMap.values()).map((detail) => ({
-            ...detail,
-            routes: detail.routes.filter(hasMeaningfulRouteData),
-        })),
+        details: Array.from(detailsMap.values())
+            .filter((detail) => activeDetailIds.has(detail.id))
+            .map((detail) => ({
+                ...detail,
+                routes: detail.routes.filter(hasMeaningfulRouteData),
+            })),
     };
 };
 
@@ -870,8 +883,10 @@ interface ShiftScheduleUniverTableProps {
 export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTableProps) => {
     const scheduleIri = normalizeResourcePath(record?.["@id"] ?? record?.id, "/shift_schedules");
     const notify = useNotify();
+    const wrapperRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const univerRef = useRef<Univer | null>(null);
+    const univerAPIRef = useRef<any>(null);
     const workbookRef = useRef<any>(null);
     const mergeDataRef = useRef<Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>>([]);
     const rowMetaRef = useRef<SheetRowMeta[]>([]);
@@ -881,9 +896,11 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
     const isSavingRef = useRef(false);
     const hasPendingSaveRef = useRef(false);
     const lastSavedSnapshotRef = useRef<string>("");
+    const lastSavedWorkbookRef = useRef<string>("");
     const [renderVersion, setRenderVersion] = useState(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const [selectedDetailId, setSelectedDetailId] = useState<number | string | null>(null);
     const [scheduleInfo, setScheduleInfo] = useState({
         name: formatPlainValue(record?.name),
         description: formatPlainValue(record?.description),
@@ -903,14 +920,16 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
     }, [record?.id, record?.name, record?.description]);
 
     useEffect(() => {
-        const handleFullscreenChange = () => {
-            setIsFullscreen(Boolean(document.fullscreenElement));
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setIsFullscreen(false);
+            }
         };
 
-        document.addEventListener("fullscreenchange", handleFullscreenChange);
+        document.addEventListener("keydown", handleKeyDown);
 
         return () => {
-            document.removeEventListener("fullscreenchange", handleFullscreenChange);
+            document.removeEventListener("keydown", handleKeyDown);
         };
     }, []);
 
@@ -938,7 +957,11 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         const snapshot = captureSnapshotFromSheet(sheet, rowMetaRef.current, detailsRef.current, scheduleInfo);
         const serialized = serializeSnapshot(snapshot);
 
-        if (serialized === lastSavedSnapshotRef.current) {
+        const fbWorkbookDataForCheck = univerAPIRef.current?.getActiveWorkbook()?.save?.();
+        const serializedWorkbook = fbWorkbookDataForCheck ? JSON.stringify(fbWorkbookDataForCheck) : "";
+        const workbookChanged = serializedWorkbook !== lastSavedWorkbookRef.current;
+
+        if (serialized === lastSavedSnapshotRef.current && !workbookChanged) {
             return;
         }
 
@@ -953,15 +976,26 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         try {
             const schedulePatchPath = normalizeResourcePath(record?.["@id"] ?? record?.id, "/shift_schedules");
 
-            if (snapshot.schedule.name !== scheduleInfo.name || snapshot.schedule.description !== scheduleInfo.description) {
-                if (!schedulePatchPath) {
-                    throw new Error("Липсва валиден идентификатор за графика.");
-                }
+            // Always save the full workbook snapshot (formatting, column widths, styles) + rowMeta
+            if (schedulePatchPath) {
+                const fbWorkbookData = fbWorkbookDataForCheck;
+                const schedulePayload: Record<string, any> = {};
 
-                await api.patch(schedulePatchPath, {
-                    name: snapshot.schedule.name || scheduleInfo.name,
-                    description: snapshot.schedule.description || null,
-                });
+                if (fbWorkbookData && workbookChanged) {
+                    schedulePayload.workbook_snapshot = {
+                        workbook: fbWorkbookData,
+                        rowMeta: rowMetaRef.current,
+                    };
+                }
+                if (snapshot.schedule.name !== scheduleInfo.name) {
+                    schedulePayload.name = snapshot.schedule.name || scheduleInfo.name;
+                }
+                if (snapshot.schedule.description !== scheduleInfo.description) {
+                    schedulePayload.description = snapshot.schedule.description || null;
+                }
+                if (Object.keys(schedulePayload).length > 0) {
+                    await api.patch(schedulePatchPath, schedulePayload);
+                }
             }
 
             const previousSnapshot = JSON.parse(lastSavedSnapshotRef.current || "{\"details\":[]}") as Partial<SaveSnapshot>;
@@ -981,15 +1015,29 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                     continue;
                 }
 
+                // shift_code must always be a non-null string; fall back to the stored value
+                const shiftCode = detail.shift_code ?? detailsRef.current.find((d: ShiftDetail) => d.id === detail.id)?.shift_code ?? "";
+                if (!shiftCode) {
+                    // Skip this detail — the row data is not yet valid (e.g., row index mismatch after delete)
+                    continue;
+                }
+
+                // Required time fields must not be null — fall back to stored API values to avoid 400
+                const stored = detailsRef.current.find((d: ShiftDetail) => d.id === detail.id);
+                const atDoctor = detail.at_doctor ?? stored?.at_doctor ?? "00:00";
+                const atDutyOfficer = detail.at_duty_officer ?? stored?.at_duty_officer ?? "00:00";
+                const shiftEnd = detail.shift_end ?? stored?.shift_end ?? "00:00";
+                const workedTime = detail.worked_time ?? stored?.worked_time ?? "00:00";
+
                 const parsedZeroTime = parseZeroTimeToMinutes(detail.zero_time);
 
                 await api.patch(detailPatchPath, {
                     shift_schedule: scheduleIri,
-                    shift_code: detail.shift_code,
-                    at_doctor: detail.at_doctor,
-                    at_duty_officer: detail.at_duty_officer,
-                    shift_end: detail.shift_end,
-                    worked_time: detail.worked_time,
+                    shift_code: shiftCode,
+                    at_doctor: atDoctor,
+                    at_duty_officer: atDutyOfficer,
+                    shift_end: shiftEnd,
+                    worked_time: workedTime,
                     night_work: detail.night_work,
                     kilometers: detail.kilometers,
                     zero_time: parsedZeroTime !== undefined ? parsedZeroTime : detail.zero_time,
@@ -998,6 +1046,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
             }
 
             lastSavedSnapshotRef.current = serialized;
+            lastSavedWorkbookRef.current = serializedWorkbook;
             const nextLocalDetails = snapshot.details.map((detail) => ({
                 id: detail.id,
                 shift_schedule: scheduleIri,
@@ -1064,6 +1113,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                 univerRef.current = null;
             }
 
+            univerAPIRef.current = null;
             workbookRef.current = null;
             isHydratingRef.current = true;
         };
@@ -1076,7 +1126,6 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
             locales: BulgarianLanguage,
             logLevel: LogLevel.ERROR,
         });
-
 
         univer.registerPlugin(UniverRenderEnginePlugin);
         univer.registerPlugin(UniverFormulaEnginePlugin);
@@ -1092,9 +1141,12 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         univer.registerPlugin(UniverSheetsFormulaPlugin);
         univer.registerPlugin(UniverSheetsFormulaUIPlugin);
 
+        // FUniver Facade API — supports insertRowBefore, deleteRows, save() etc.
+        const univerAPI = FUniver.newAPI(univer);
+        univerAPIRef.current = univerAPI;
+
         const injector = (univer as any).__getInjector();
         const commandService = injector.get(ICommandService);
-        const univerInstanceService = injector.get(IUniverInstanceService);
 
         commandService.onCommandExecuted((command: any) => {
             if (isHydratingRef.current) {
@@ -1102,26 +1154,72 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
             }
 
             const params = command?.params;
-            const range = params?.range;
-            if (!range || !params?.unitId || !params?.subUnitId) {
+
+            // Keep rowMeta in sync when rows are removed (native Univer UI or via Facade API)
+            if (command.id === "sheet.mutation.remove-rows") {
+                const range = params?.range;
+                if (range) {
+                    const { startRow, endRow } = range as { startRow: number; endRow: number };
+                    const count = endRow - startRow + 1;
+                    rowMetaRef.current = rowMetaRef.current
+                        .filter((m: SheetRowMeta) => m.rowIndex < startRow || m.rowIndex > endRow)
+                        .map((m: SheetRowMeta) => m.rowIndex > endRow ? { ...m, rowIndex: m.rowIndex - count } : m);
+                }
+                scheduleAutoSave();
                 return;
             }
 
-            const workbook = univerInstanceService.getUnit(params.unitId);
-            const sheet = workbook?.getSheetBySheetId(params.subUnitId);
-            if (!sheet) {
+            // Keep rowMeta in sync when rows are inserted (native Univer UI or via Facade API)
+            if (command.id === "sheet.mutation.insert-row") {
+                const range = params?.range;
+                if (range) {
+                    const { startRow, endRow } = range as { startRow: number; endRow: number };
+                    const count = endRow - startRow + 1;
+                    rowMetaRef.current = rowMetaRef.current
+                        .map((m: SheetRowMeta) => m.rowIndex >= startRow ? { ...m, rowIndex: m.rowIndex + count } : m);
+                }
+                scheduleAutoSave();
+                return;
+            }
+
+            // Track the selected row to enable "Delete shift" button
+            if (typeof command.id === "string" && command.id.includes("set-selections")) {
+                const selections = params?.selections;
+                if (Array.isArray(selections) && selections.length > 0) {
+                    const row = selections[0]?.range?.startRow;
+                    if (typeof row === "number") {
+                        const meta = rowMetaRef.current.find((m: SheetRowMeta) => m.rowIndex === row);
+                        setSelectedDetailId(meta?.detailId ?? null);
+                    }
+                }
                 return;
             }
 
             scheduleAutoSave();
         });
 
-        const { workbook, mergeData, rowMeta } = buildWorkbookConfig(scheduleInfo, detailsRef.current);
+        // Load from saved snapshot (preserves formatting) or build fresh from API data
+        const savedSnapshot = record?.workbook_snapshot;
+        let workbookConfig: Record<string, any>;
+        let rowMeta: SheetRowMeta[];
+        let mergeData: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
+
+        if (savedSnapshot?.workbook) {
+            workbookConfig = savedSnapshot.workbook;
+            rowMeta = Array.isArray(savedSnapshot.rowMeta) ? savedSnapshot.rowMeta : [];
+            const sheetData = savedSnapshot.workbook?.sheets?.["shift-schedule-sheet"];
+            mergeData = Array.isArray(sheetData?.mergeData) ? sheetData.mergeData : [];
+        } else {
+            const built = buildWorkbookConfig(scheduleInfo, detailsRef.current);
+            workbookConfig = built.workbook;
+            rowMeta = built.rowMeta;
+            mergeData = built.mergeData;
+        }
 
         univerRef.current = univer;
         mergeDataRef.current = mergeData;
         rowMetaRef.current = rowMeta;
-        workbookRef.current = univer.createUnit(UniverInstanceType.UNIVER_SHEET, workbook);
+        workbookRef.current = univer.createUnit(UniverInstanceType.UNIVER_SHEET, workbookConfig);
 
         window.setTimeout(() => {
             isHydratingRef.current = false;
@@ -1188,7 +1286,11 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         });
 
         mergeDataRef.current.forEach((merge: { startRow: number; endRow: number; startColumn: number; endColumn: number }) => {
-            worksheet.mergeCells(merge.startRow + 1, merge.startColumn + 1, merge.endRow + 1, merge.endColumn + 1);
+            try {
+                worksheet.mergeCells(merge.startRow + 1, merge.startColumn + 1, merge.endRow + 1, merge.endColumn + 1);
+            } catch {
+                // skip duplicate merges
+            }
         });
 
         const baseName = sanitizeFileName(scheduleInfo.name || record?.name || "grafik-na-smenite");
@@ -1202,20 +1304,123 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         window.URL.revokeObjectURL(url);
     };
 
-    const toggleFullscreen = async () => {
-        if (!containerRef.current) {
+    const addShift = async () => {
+        if (!scheduleIri || !univerAPIRef.current) {
             return;
         }
+        try {
+            setSaveStatus("saving");
+            const nextNumber = detailsRef.current.length + 1;
+            const defaultShiftCode = `СМ${nextNumber}-Д`;
 
-        if (document.fullscreenElement) {
-            await document.exitFullscreen();
-        } else {
-            await containerRef.current.requestFullscreen();
+            const response = await api.post("/shift_schedule_details", {
+                shift_schedule: scheduleIri,
+                shift_code: defaultShiftCode,
+                at_doctor: "00:00",
+                at_duty_officer: "00:00",
+                shift_end: "00:00",
+                worked_time: "00:00",
+                night_work: null,
+                kilometers: 0,
+                zero_time: null,
+                routes: [],
+            });
+
+            const newDetail = response.data as ShiftDetail;
+            if (!newDetail.id) {
+                throw new Error("API не върна ID за новата смяна.");
+            }
+
+            const insertRow =
+                rowMetaRef.current.length > 0
+                    ? Math.max(...rowMetaRef.current.map((m: SheetRowMeta) => m.rowIndex)) + 1
+                    : DATA_ROW_START;
+
+            const fbSheet = univerAPIRef.current.getActiveWorkbook()?.getActiveSheet();
+            fbSheet?.insertRowBefore(insertRow);
+
+            rowMetaRef.current = [
+                ...rowMetaRef.current,
+                {
+                    detailId: newDetail.id,
+                    rowIndex: insertRow,
+                    isPrimaryRow: true,
+                    routeIndex: 0,
+                    acceptsRouteData: true,
+                },
+            ];
+
+            fbSheet?.getRange(insertRow, 0, 1, 1)?.setValue(String(nextNumber));
+            fbSheet?.getRange(insertRow, 1, 1, 1)?.setValue(defaultShiftCode);
+            // Populate required time/number cells so captureSnapshotFromSheet never reads null
+            // for fields the API requires to be non-null strings
+            fbSheet?.getRange(insertRow, 2, 1, 1)?.setValue("00:00");  // at_doctor
+            fbSheet?.getRange(insertRow, 3, 1, 1)?.setValue("00:00");  // at_duty_officer
+            fbSheet?.getRange(insertRow, 11, 1, 1)?.setValue("00:00"); // shift_end
+            fbSheet?.getRange(insertRow, 12, 1, 1)?.setValue("00:00"); // worked_time
+            fbSheet?.getRange(insertRow, 13, 1, 1)?.setValue("0");     // kilometers
+
+            detailsRef.current = [...detailsRef.current, newDetail];
+            setSelectedDetailId(newDetail.id);
+            scheduleAutoSave();
+            notify("Смяна добавена успешно", { type: "success" });
+        } catch (error: any) {
+            setSaveStatus("error");
+            notify(
+                error?.response?.data?.detail || error?.message || "Грешка при добавяне на смяна",
+                { type: "error" }
+            );
         }
+    };
 
-        window.setTimeout(() => {
-            window.dispatchEvent(new Event("resize"));
-        }, 120);
+    const removeShift = async (detailId: number | string) => {
+        if (!univerAPIRef.current) {
+            return;
+        }
+        const detail = detailsRef.current.find((d: ShiftDetail) => d.id === detailId);
+        const shiftCode = detail?.shift_code || String(detailId);
+        if (!window.confirm(`Изтриване на смяна "${shiftCode}"?`)) {
+            return;
+        }
+        try {
+            setSaveStatus("saving");
+            const detailPath = normalizeResourcePath(detailId, "/shift_schedule_details");
+            if (!detailPath) {
+                throw new Error("Липсва валиден идентификатор на смяната.");
+            }
+            await api.delete(detailPath);
+
+            // Sort descending so row index adjustments stay valid
+            const detailRows = rowMetaRef.current
+                .filter((m: SheetRowMeta) => m.detailId === detailId)
+                .sort((a: SheetRowMeta, b: SheetRowMeta) => b.rowIndex - a.rowIndex);
+
+            const fbSheet = univerAPIRef.current.getActiveWorkbook()?.getActiveSheet();
+            for (const meta of detailRows) {
+                fbSheet?.deleteRow(meta.rowIndex);
+                // rowMetaRef is updated synchronously by the command listener (sheet.mutation.remove-rows)
+            }
+
+            detailsRef.current = detailsRef.current.filter((d: ShiftDetail) => d.id !== detailId);
+            setSelectedDetailId(null);
+            scheduleAutoSave();
+            notify("Смяна изтрита успешно", { type: "success" });
+        } catch (error: any) {
+            setSaveStatus("error");
+            notify(
+                error?.response?.data?.detail || error?.message || "Грешка при изтриване на смяна",
+                { type: "error" }
+            );
+        }
+    };
+
+    const toggleFullscreen = () => {
+        setIsFullscreen((prev: boolean) => {
+            window.setTimeout(() => {
+                window.dispatchEvent(new Event("resize"));
+            }, 120);
+            return !prev;
+        });
     };
 
     if (isLoading) {
@@ -1237,6 +1442,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
 
     return (
         <Box
+            ref={wrapperRef}
             sx={{
                 mt: isFullscreen ? 0 : 2,
                 position: isFullscreen ? "fixed" : "relative",
@@ -1252,6 +1458,23 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                 </Button>
                 <Button
                     variant="outlined"
+                    color="success"
+                    startIcon={<AddIcon />}
+                    onClick={() => { void addShift(); }}
+                >
+                    Добави смяна
+                </Button>
+                <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    disabled={selectedDetailId === null}
+                    onClick={() => { if (selectedDetailId !== null) void removeShift(selectedDetailId); }}
+                >
+                    Изтрий смяна
+                </Button>
+                <Button
+                    variant="outlined"
                     startIcon={<RefreshIcon />}
                     onClick={() => {
                         setSaveStatus("idle");
@@ -1263,22 +1486,20 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                 <Button
                     variant="outlined"
                     startIcon={isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
-                    onClick={() => {
-                        void toggleFullscreen();
-                    }}
+                    onClick={toggleFullscreen}
                 >
                     {isFullscreen ? "Изход от цял екран" : "Цял екран"}
                 </Button>
                 <Typography variant="body2" color="text.secondary">
                     {saveStatus === "saving" && "Автоматично запазване..."}
-                    {saveStatus === "saved" && "Промените са записани в API."}
+                    {saveStatus === "saved" && "Промените са записани."}
                     {saveStatus === "error" && "Има грешка при автоматичното запазване."}
-                    {saveStatus === "idle" && "Промените в таблицата се записват автоматично в API след кратко изчакване."}
+                    {saveStatus === "idle" && "Форматирането, стойностите и структурата се записват автоматично."}
                 </Typography>
             </Stack>
 
             <Alert severity={saveStatus === "error" ? "error" : "info"} sx={{ mb: 2 }}>
-                Таблицата поддържа автоматично записване към API при редакция на клетките. При много маршрути структурата на редовете се запазва; редактират се стойностите в съществуващите клетки.
+                Всички промени — стойности, форматиране, ширини на колони — се записват автоматично. Изберете ред и натиснете „Изтрий смяна" за изтриване.
             </Alert>
 
             <Box
