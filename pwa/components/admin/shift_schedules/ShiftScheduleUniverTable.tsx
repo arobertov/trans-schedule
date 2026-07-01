@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -6,7 +6,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
-import { useGetList, useNotify } from "react-admin";
+import { useGetList, useGetOne, useNotify } from "react-admin";
 import "@univerjs/design/lib/index.css";
 import "@univerjs/ui/lib/index.css";
 import "@univerjs/sheets-ui/lib/index.css";
@@ -19,7 +19,6 @@ import {
     UniverInstanceType,
 } from "@univerjs/core";
 // FUniver is bundled inside @univerjs/core at version 0.15.x
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 import { FUniver } from "@univerjs/core/facade";
 import { defaultTheme } from "@univerjs/design";
 import { UniverDocsPlugin } from "@univerjs/docs";
@@ -112,6 +111,14 @@ const DATA_ROW_START = 5;
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 const BORDER_THIN = 1;
 const BORDER_DOUBLE = 7;
+const BORDER_MEDIUM = 8;
+const OUTER_BORDER_RENDER_STYLE = BORDER_MEDIUM;
+
+const createBorderSide = (renderStyle: number, exportStyle = renderStyle) => ({
+    s: renderStyle,
+    exportS: exportStyle,
+    cl: { rgb: "#000000" },
+});
 
 const COLUMN_DEFINITIONS = [
     { label: "№", minWidth: 44, maxWidth: 56 },
@@ -159,24 +166,65 @@ const applyOuterBorder = (
             const nextStyle = cloneCellStyle(cell.s || {});
 
             if (row === startRow) {
-                nextStyle.bd.t = { s: borderStyle, cl: { rgb: "#000000" } };
+                nextStyle.bd.t = createBorderSide(borderStyle, BORDER_DOUBLE);
             }
 
             if (row === endRow) {
-                nextStyle.bd.b = { s: borderStyle, cl: { rgb: "#000000" } };
+                nextStyle.bd.b = createBorderSide(borderStyle, BORDER_DOUBLE);
             }
 
             if (column === startColumn) {
-                nextStyle.bd.l = { s: borderStyle, cl: { rgb: "#000000" } };
+                nextStyle.bd.l = createBorderSide(borderStyle, BORDER_DOUBLE);
             }
 
             if (column === endColumn) {
-                nextStyle.bd.r = { s: borderStyle, cl: { rgb: "#000000" } };
+                nextStyle.bd.r = createBorderSide(borderStyle, BORDER_DOUBLE);
             }
 
             cell.s = nextStyle;
         }
     }
+};
+
+const reinforceMergedGroupBorders = (
+    cellData: Record<number, Record<number, { v: string; s?: any }>>,
+    startRow: number,
+    endRow: number,
+    mergedColumns: number[]
+) => {
+    const anchorRow = cellData[startRow];
+    if (!anchorRow) {
+        return;
+    }
+
+    mergedColumns.forEach((column) => {
+        const anchorCell = anchorRow[column];
+        if (!anchorCell) {
+            return;
+        }
+
+        const nextStyle = cloneCellStyle(anchorCell.s || {});
+        nextStyle.bd.t = createBorderSide(OUTER_BORDER_RENDER_STYLE, BORDER_DOUBLE);
+        nextStyle.bd.b = createBorderSide(OUTER_BORDER_RENDER_STYLE, BORDER_DOUBLE);
+
+        if (column === 0) {
+            nextStyle.bd.l = createBorderSide(OUTER_BORDER_RENDER_STYLE, BORDER_DOUBLE);
+        }
+
+        anchorCell.s = nextStyle;
+
+        const lastCell = cellData[endRow]?.[column];
+        if (!lastCell) {
+            return;
+        }
+
+        const lastStyle = cloneCellStyle(lastCell.s || {});
+        lastStyle.bd.b = createBorderSide(OUTER_BORDER_RENDER_STYLE, BORDER_DOUBLE);
+        if (column === 0) {
+            lastStyle.bd.l = createBorderSide(OUTER_BORDER_RENDER_STYLE, BORDER_DOUBLE);
+        }
+        lastCell.s = lastStyle;
+    });
 };
 
 const STYLES = {
@@ -558,7 +606,7 @@ const buildWorkbookConfig = (schedule: { name: string; description: string }, sh
     COLUMNS.forEach((label, columnIndex) => {
         cellData[HEADER_ROW][columnIndex] = { v: label, s: STYLES.header };
     });
-    applyOuterBorder(cellData, HEADER_ROW, HEADER_ROW, 0, COLUMNS.length - 1, BORDER_DOUBLE);
+    applyOuterBorder(cellData, HEADER_ROW, HEADER_ROW, 0, COLUMNS.length - 1, OUTER_BORDER_RENDER_STYLE);
 
     let currentSheetRow = DATA_ROW_START;
 
@@ -610,9 +658,10 @@ const buildWorkbookConfig = (schedule: { name: string; description: string }, sh
             const endRow = currentSheetRow - 1;
             mergeData.push({ startRow, endRow, startColumn: 0, endColumn: 0 });
             mergeData.push({ startRow, endRow, startColumn: 1, endColumn: 1 });
+            reinforceMergedGroupBorders(cellData, startRow, endRow, [0, 1]);
         }
 
-        applyOuterBorder(cellData, groupStartRow, currentSheetRow - 1, 0, COLUMNS.length - 1, BORDER_DOUBLE);
+        applyOuterBorder(cellData, groupStartRow, currentSheetRow - 1, 0, COLUMNS.length - 1, OUTER_BORDER_RENDER_STYLE);
     });
 
     return {
@@ -664,7 +713,7 @@ const toExcelBorderStyle = (style?: number) => {
         return "double";
     }
 
-    if (style === 8) {
+    if (style === BORDER_MEDIUM) {
         return "medium";
     }
 
@@ -716,7 +765,7 @@ const toExcelCellStyle = (style: any, value: string) => {
                     ...(style.bd.t
                         ? {
                             top: {
-                                style: toExcelBorderStyle(style.bd.t.s),
+                                style: toExcelBorderStyle(style.bd.t.exportS ?? style.bd.t.s),
                                 color: { argb: toExcelArgb(style.bd.t.cl) || "FF000000" },
                             },
                         }
@@ -724,7 +773,7 @@ const toExcelCellStyle = (style: any, value: string) => {
                     ...(style.bd.b
                         ? {
                             bottom: {
-                                style: toExcelBorderStyle(style.bd.b.s),
+                                style: toExcelBorderStyle(style.bd.b.exportS ?? style.bd.b.s),
                                 color: { argb: toExcelArgb(style.bd.b.cl) || "FF000000" },
                             },
                         }
@@ -732,7 +781,7 @@ const toExcelCellStyle = (style: any, value: string) => {
                     ...(style.bd.l
                         ? {
                             left: {
-                                style: toExcelBorderStyle(style.bd.l.s),
+                                style: toExcelBorderStyle(style.bd.l.exportS ?? style.bd.l.s),
                                 color: { argb: toExcelArgb(style.bd.l.cl) || "FF000000" },
                             },
                         }
@@ -740,7 +789,7 @@ const toExcelCellStyle = (style: any, value: string) => {
                     ...(style.bd.r
                         ? {
                             right: {
-                                style: toExcelBorderStyle(style.bd.r.s),
+                                style: toExcelBorderStyle(style.bd.r.exportS ?? style.bd.r.s),
                                 color: { argb: toExcelArgb(style.bd.r.cl) || "FF000000" },
                             },
                         }
@@ -881,7 +930,7 @@ interface ShiftScheduleUniverTableProps {
 }
 
 export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTableProps) => {
-    const scheduleIri = normalizeResourcePath(record?.["@id"] ?? record?.id, "/shift_schedules");
+    const initialScheduleIri = normalizeResourcePath(record?.["@id"] ?? record?.id, "/shift_schedules");
     const notify = useNotify();
     const wrapperRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -901,9 +950,19 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [selectedDetailId, setSelectedDetailId] = useState<number | string | null>(null);
+    const [hydratedRecord, setHydratedRecord] = useState<ShiftScheduleRecord | undefined>(record);
+
+    const { data: fetchedScheduleRecord } = useGetOne<ShiftScheduleRecord>(
+        "shift_schedules",
+        { id: initialScheduleIri ?? record?.id ?? "" },
+        { enabled: Boolean(initialScheduleIri ?? record?.id) }
+    );
+
+    const activeRecord = fetchedScheduleRecord ?? hydratedRecord ?? record;
+    const scheduleIri = normalizeResourcePath(activeRecord?.["@id"] ?? activeRecord?.id, "/shift_schedules") ?? initialScheduleIri;
     const [scheduleInfo, setScheduleInfo] = useState({
-        name: formatPlainValue(record?.name),
-        description: formatPlainValue(record?.description),
+        name: formatPlainValue(activeRecord?.name),
+        description: formatPlainValue(activeRecord?.description),
     });
 
     const { data = [], isLoading } = useGetList("shift_schedule_details", {
@@ -913,11 +972,15 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
     });
 
     useEffect(() => {
+        setHydratedRecord(fetchedScheduleRecord ?? record);
+    }, [fetchedScheduleRecord, record]);
+
+    useEffect(() => {
         setScheduleInfo({
-            name: formatPlainValue(record?.name),
-            description: formatPlainValue(record?.description),
+            name: formatPlainValue(activeRecord?.name),
+            description: formatPlainValue(activeRecord?.description),
         });
-    }, [record?.id, record?.name, record?.description]);
+    }, [activeRecord?.id, activeRecord?.name, activeRecord?.description]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -942,10 +1005,10 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                 .filter((detail: ShiftDetail) => detail.id !== undefined && detail.id !== null)
                 .map((detail: ShiftDetail) => buildSaveDetailSnapshot(detail)),
         });
-    }, [data]);
+    }, [data, scheduleInfo]);
 
-    const performAutoSave = async () => {
-        if (!record?.id || !workbookRef.current || !scheduleIri) {
+    const performAutoSave = useCallback(async () => {
+        if (!activeRecord?.id || !workbookRef.current || !scheduleIri) {
             return;
         }
 
@@ -974,7 +1037,8 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         setSaveStatus("saving");
 
         try {
-            const schedulePatchPath = normalizeResourcePath(record?.["@id"] ?? record?.id, "/shift_schedules");
+            const schedulePatchPath = scheduleIri;
+            let nextWorkbookSnapshot: ShiftScheduleRecord["workbook_snapshot"] | undefined;
 
             // Always save the full workbook snapshot (formatting, column widths, styles) + rowMeta
             if (schedulePatchPath) {
@@ -982,10 +1046,11 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                 const schedulePayload: Record<string, any> = {};
 
                 if (fbWorkbookData && workbookChanged) {
-                    schedulePayload.workbook_snapshot = {
+                    nextWorkbookSnapshot = {
                         workbook: fbWorkbookData,
                         rowMeta: rowMetaRef.current,
                     };
+                    schedulePayload.workbook_snapshot = nextWorkbookSnapshot;
                 }
                 if (snapshot.schedule.name !== scheduleInfo.name) {
                     schedulePayload.name = snapshot.schedule.name || scheduleInfo.name;
@@ -995,6 +1060,16 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                 }
                 if (Object.keys(schedulePayload).length > 0) {
                     await api.patch(schedulePatchPath, schedulePayload);
+                    setHydratedRecord((current: ShiftScheduleRecord | undefined) => ({
+                        ...(current ?? activeRecord ?? {}),
+                        id: current?.id ?? activeRecord?.id,
+                        "@id": current?.["@id"] ?? activeRecord?.["@id"] ?? schedulePatchPath,
+                        name: schedulePayload.name ?? snapshot.schedule.name,
+                        description: Object.prototype.hasOwnProperty.call(schedulePayload, "description")
+                            ? schedulePayload.description
+                            : snapshot.schedule.description,
+                        workbook_snapshot: nextWorkbookSnapshot ?? current?.workbook_snapshot ?? activeRecord?.workbook_snapshot ?? null,
+                    }));
                 }
             }
 
@@ -1085,9 +1160,9 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
                 void performAutoSave();
             }
         }
-    };
+    }, [activeRecord, notify, scheduleIri, scheduleInfo]);
 
-    const scheduleAutoSave = () => {
+    const scheduleAutoSave = useCallback(() => {
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
         }
@@ -1095,10 +1170,10 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         saveTimeoutRef.current = setTimeout(() => {
             void performAutoSave();
         }, AUTOSAVE_DEBOUNCE_MS);
-    };
+    }, [performAutoSave]);
 
     useEffect(() => {
-        if (!containerRef.current || !record) {
+        if (!containerRef.current || !activeRecord) {
             return;
         }
 
@@ -1199,7 +1274,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         });
 
         // Load from saved snapshot (preserves formatting) or build fresh from API data
-        const savedSnapshot = record?.workbook_snapshot;
+        const savedSnapshot = activeRecord?.workbook_snapshot;
         let workbookConfig: Record<string, any>;
         let rowMeta: SheetRowMeta[];
         let mergeData: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
@@ -1210,7 +1285,10 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
             const sheetData = savedSnapshot.workbook?.sheets?.["shift-schedule-sheet"];
             mergeData = Array.isArray(sheetData?.mergeData) ? sheetData.mergeData : [];
         } else {
-            const built = buildWorkbookConfig(scheduleInfo, detailsRef.current);
+            const built = buildWorkbookConfig({
+                name: formatPlainValue(activeRecord?.name),
+                description: formatPlainValue(activeRecord?.description),
+            }, detailsRef.current);
             workbookConfig = built.workbook;
             rowMeta = built.rowMeta;
             mergeData = built.mergeData;
@@ -1226,7 +1304,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
         }, 100);
 
         return cleanup;
-    }, [record, renderVersion, isLoading]);
+    }, [activeRecord, isLoading, renderVersion, scheduleAutoSave]);
 
     const handleExport = async () => {
         if (!workbookRef.current) {
@@ -1293,7 +1371,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
             }
         });
 
-        const baseName = sanitizeFileName(scheduleInfo.name || record?.name || "grafik-na-smenite");
+        const baseName = sanitizeFileName(scheduleInfo.name || activeRecord?.name || "grafik-na-smenite");
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
         const url = window.URL.createObjectURL(blob);
@@ -1499,7 +1577,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
             </Stack>
 
             <Alert severity={saveStatus === "error" ? "error" : "info"} sx={{ mb: 2 }}>
-                Всички промени — стойности, форматиране, ширини на колони — се записват автоматично. Изберете ред и натиснете „Изтрий смяна" за изтриване.
+                Всички промени — стойности, форматиране, ширини на колони — се записват автоматично. Изберете ред и натиснете &bdquo;Изтрий смяна&ldquo; за изтриване.
             </Alert>
 
             <Box

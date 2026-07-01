@@ -1,10 +1,12 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Box, Button, Chip, FormControl, InputLabel, MenuItem, Select, Stack, Typography, Accordion, AccordionSummary, AccordionDetails, Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Slider } from '@mui/material';
+import { Box, Button, Chip, FormControl, InputLabel, MenuItem, Select, Stack, Typography, Accordion, AccordionSummary, AccordionDetails, Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Slider, TextField } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import TransformIcon from '@mui/icons-material/Transform';
 import SaveIcon from '@mui/icons-material/Save';
 import TuneIcon from '@mui/icons-material/Tune';
+import EditIcon from '@mui/icons-material/Edit';
+import api from '../../../jwt-frontend-auth/src/api/apiClient';
 
 interface ScheduleLine {
     id: number;
@@ -37,6 +39,7 @@ interface Props {
     shiftSchedules?: ShiftScheduleOption[];
     selectedShiftScheduleId?: string | null;
     onShiftScheduleSelect?: (id: string | null) => void;
+    onRefresh?: () => void;
 }
 
 export interface ShiftVisualSettings {
@@ -93,7 +96,7 @@ const decimalToTime = (val: number): string => {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
-export const TimeDistanceChart = ({ lines, stations, height = '800px', title = 'График Движение', scheduleId, shiftBlocks = [], shiftSchedules = [], selectedShiftScheduleId = null, onShiftScheduleSelect }: Props) => {
+export const TimeDistanceChart = ({ lines, stations, height = '800px', title = 'График Движение', scheduleId, shiftBlocks = [], shiftSchedules = [], selectedShiftScheduleId = null, onShiftScheduleSelect, onRefresh }: Props) => {
     const [mappings, setMappings] = useState<Record<string, string>>({});
     const [savedMappingsString, setSavedMappingsString] = useState<string>('{}');
     const [sourceTrain, setSourceTrain] = useState('');
@@ -109,6 +112,26 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
     const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
     const [pendingScheduleId, setPendingScheduleId] = useState<string>(selectedShiftScheduleId || '');
     const [shiftSettings, setShiftSettings] = useState<ShiftVisualSettings>(DEFAULT_SETTINGS);
+
+    // States for Manual Shift Drawing Mode
+    const [isDrawMode, setIsDrawMode] = useState(false);
+    const [drawingStart, setDrawingStart] = useState<{ time: number; trainNumber: string } | null>(null);
+    const [manualShiftDialog, setManualShiftDialog] = useState<{
+        open: boolean;
+        trainNumber: string;
+        startTime: string;
+        endTime: string;
+        shiftCode: string;
+    }>({
+        open: false,
+        trainNumber: '',
+        startTime: '',
+        endTime: '',
+        shiftCode: '',
+    });
+
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     // Load shift visual settings from localStorage
     useEffect(() => {
@@ -562,7 +585,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                 inverse: true, // Ascending order top-to-bottom
                 axisLabel: { fontSize: 11 },
             },
-            dataZoom: [
+            dataZoom: isDrawMode ? [] : [
                 { type: 'slider', xAxisIndex: 0, filterMode: 'none' },
                 { type: 'slider', yAxisIndex: 0, filterMode: 'empty', right: 10 },
                 { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
@@ -573,6 +596,16 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
             legend: { show: false },
             toolbox: {
                 feature: {
+                    myDrawMode: {
+                        show: !!selectedShiftScheduleId,
+                        title: isDrawMode ? 'Изход от Чертане' : 'Ръчно Чертане на смени за влакове',
+                        icon: 'path://M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+                        onclick: () => {
+                            setIsDrawMode(prev => !prev);
+                            setDrawingStart(null);
+                        },
+                        iconStyle: isDrawMode ? { borderColor: '#d32f2f', color: '#d32f2f' } : {},
+                    },
                     myShiftSchedule: {
                         show: shiftSchedules.length > 0,
                         title: selectedShiftScheduleId ? 'Смени (активно)' : 'Покажи смени',
@@ -618,7 +651,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
             } 
         };
 
-    }, [lines, stations, title, mappings, shiftBlocks, shiftSchedules, selectedShiftScheduleId, handleOpenShiftDialog, handleSaveAsImage, shiftSettings]);
+    }, [lines, stations, title, mappings, shiftBlocks, shiftSchedules, selectedShiftScheduleId, handleOpenShiftDialog, handleSaveAsImage, shiftSettings, isDrawMode]);
 
     return (
         <React.Fragment>
@@ -833,7 +866,69 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
 
                 {/* Right: chart — scrollable when dynamic height exceeds container */}
                 <Box sx={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto' }}>
-                    <ReactECharts ref={echartsRef} option={option} style={{ height: isFullScreen ? '100%' : dynamicChartHeight, width: '100%' }} />
+                    <ReactECharts 
+                        ref={echartsRef} 
+                        option={option} 
+                        style={{ height: isFullScreen ? '100%' : dynamicChartHeight, width: '100%' }} 
+                        onEvents={{
+                            'mousedown': (params: any) => {
+                                if (!isDrawMode) return;
+                                const echartsInstance = echartsRef.current?.getEchartsInstance();
+                                if (!echartsInstance) return;
+
+                                // Convert pixels to internal grid coordinates (X, Y)
+                                const point = echartsInstance.convertFromPixel({ gridIndex: 0 }, [params.event.offsetX, params.event.offsetY]);
+                                if (!point) return;
+
+                                const decimalTime = point[0];
+                                const yIndex = Math.round(point[1]);
+                                
+                                // Fetch the actual train numbers corresponding to category axis keys
+                                const trainNumbersFromOption = option.yAxis.data;
+                                if (yIndex >= 0 && yIndex < trainNumbersFromOption.length) {
+                                    const trainNumber = trainNumbersFromOption[yIndex];
+                                    setDrawingStart({ time: decimalTime, trainNumber });
+                                }
+                            },
+                            'mouseup': (params: any) => {
+                                if (!isDrawMode || !drawingStart) return;
+                                const echartsInstance = echartsRef.current?.getEchartsInstance();
+                                if (!echartsInstance) return;
+
+                                const point = echartsInstance.convertFromPixel({ gridIndex: 0 }, [params.event.offsetX, params.event.offsetY]);
+                                if (!point) {
+                                    setDrawingStart(null);
+                                    return;
+                                }
+
+                                const decimalTimeEnd = point[0];
+                                const yIndex = Math.round(point[1]);
+                                const trainNumbersFromOption = option.yAxis.data;
+
+                                if (yIndex >= 0 && yIndex < trainNumbersFromOption.length) {
+                                    const trainNumberEnd = trainNumbersFromOption[yIndex];
+                                    // Ensure user draws on the same train row
+                                    if (trainNumberEnd === drawingStart.trainNumber) {
+                                        const startTimeVal = Math.min(drawingStart.time, decimalTimeEnd);
+                                        const endTimeVal = Math.max(drawingStart.time, decimalTimeEnd);
+
+                                        // Clamp values to diagram min (4) and max (25) representing 04:00 - 01:00 (next day)
+                                        const finalStart = Math.max(4, Math.min(25, startTimeVal));
+                                        const finalEnd = Math.max(4, Math.min(25, endTimeVal));
+
+                                        setManualShiftDialog({
+                                            open: true,
+                                            trainNumber: drawingStart.trainNumber,
+                                            startTime: decimalToTime(finalStart),
+                                            endTime: decimalToTime(finalEnd),
+                                            shiftCode: '',
+                                        });
+                                    }
+                                }
+                                setDrawingStart(null);
+                            }
+                        }}
+                    />
                 </Box>
             </Box>
 
@@ -935,6 +1030,135 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                     }>Печат</Button>
                 </DialogActions>
             </Dialog>
+
+            {/* ── Manual Shift Drawing dialog ───────────────────────────────── */}
+            <Dialog 
+                open={manualShiftDialog.open} 
+                onClose={() => setManualShiftDialog(prev => ({ ...prev, open: false }))} 
+                maxWidth="sm" 
+                fullWidth
+            >
+                <DialogTitle>Добавяне/Свързване на смяна към влак</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2, mt: 1 }}>
+                        Изчертахте отрязък за влак <strong>{manualShiftDialog.trainNumber}</strong> от <strong>{manualShiftDialog.startTime}</strong> до <strong>{manualShiftDialog.endTime}</strong>.
+                    </Typography>
+                    
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <TextField
+                            label="Код на смяната (напр. CM9-Д)"
+                            placeholder="Въведете кода на смяната"
+                            fullWidth
+                            variant="outlined"
+                            size="small"
+                            value={manualShiftDialog.shiftCode}
+                            onChange={(e) => setManualShiftDialog(prev => ({ ...prev, shiftCode: e.target.value }))}
+                        />
+
+                        <Typography variant="caption" color="text.secondary">
+                            * Ако тази смяна вече съществува в текущия график на смени, изчертаният отрязък ще бъде прикрепен към неговия маршрут. Ако смяната не съществува, ще бъде създаден нов ред в таблицата за смени с празни данни по подразбиране.
+                        </Typography>
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setManualShiftDialog(prev => ({ ...prev, open: false }))}>Отказ</Button>
+                    <Button 
+                        onClick={async () => {
+                            const code = manualShiftDialog.shiftCode.trim();
+                            if (!code) {
+                                setErrorMessage('Моля въведете код на смяна!');
+                                return;
+                            }
+                            
+                            try {
+                                // Search if shift_detail already exists for this code in selectedShiftScheduleId
+                                const searchRes = await api.get('/shift_schedule_details', {
+                                    params: {
+                                        shift_schedule: `/shift_schedules/${selectedShiftScheduleId}`,
+                                        shift_code: code
+                                    }
+                                });
+
+                                const records = searchRes.data?.['hydra:member'] || [];
+                                const existingDetail = records.find((r: any) => (r.shift_code || '').trim().toLowerCase() === code.toLowerCase());
+
+                                const newRouteObj = {
+                                    route: manualShiftDialog.trainNumber,
+                                    in_schedule: manualShiftDialog.startTime,
+                                    from_schedule: manualShiftDialog.endTime,
+                                    pickup_location: '',
+                                    pickup_route_number: null,
+                                    dropoff_location: '',
+                                    dropoff_route_number: null,
+                                    route_kilometers: 0
+                                };
+
+                                if (existingDetail) {
+                                    // Append route to existing details routes
+                                    const routes = Array.isArray(existingDetail.routes) ? [...existingDetail.routes] : [];
+                                    routes.push(newRouteObj);
+                                    
+                                    const cleanId = String(existingDetail.id || existingDetail['@id']).split('/').pop();
+                                    await api.patch(`/shift_schedule_details/${cleanId}`, {
+                                        routes: routes
+                                    });
+                                    setSuccessMessage(`Успешно добавихте отрязък за влак ${manualShiftDialog.trainNumber} към съществуваща смяна "${code}"`);
+                                } else {
+                                    // Create a completely new shift detail row
+                                    await api.post('/shift_schedule_details', {
+                                        shift_schedule: `/shift_schedules/${selectedShiftScheduleId}`,
+                                        shift_code: code,
+                                        routes: [newRouteObj],
+                                        at_doctor: '00:00',
+                                        at_duty_officer: '00:00',
+                                        shift_end: '00:00',
+                                        worked_time: '00:00',
+                                        kilometers: 0
+                                    });
+                                    setSuccessMessage(`Успешно създадохте нова смяна "${code}" с отрязък за влак ${manualShiftDialog.trainNumber}`);
+                                }
+
+                                // Trigger Diagram reload
+                                if (onRefresh) {
+                                    onRefresh();
+                                }
+                            } catch (err: any) {
+                                console.error(err);
+                                const backendMsg = err.response?.data?.['hydra:description'] || err.response?.data?.detail || err.message;
+                                setErrorMessage(`Възникна грешка при запазване: ${backendMsg}`);
+                            } finally {
+                                setManualShiftDialog(prev => ({ ...prev, open: false }));
+                            }
+                        }} 
+                        variant="contained" 
+                        disabled={!manualShiftDialog.shiftCode.trim()}
+                    >
+                        Запази
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Snackbar
+                open={!!errorMessage}
+                autoHideDuration={6000}
+                onClose={() => setErrorMessage(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert onClose={() => setErrorMessage(null)} severity="error" sx={{ width: '100%' }}>
+                    {errorMessage}
+                </Alert>
+            </Snackbar>
+
+            <Snackbar
+                open={!!successMessage}
+                autoHideDuration={4000}
+                onClose={() => setSuccessMessage(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert onClose={() => setSuccessMessage(null)} severity="success" sx={{ width: '100%' }}>
+                    {successMessage}
+                </Alert>
+            </Snackbar>
         </React.Fragment>
     );
 };

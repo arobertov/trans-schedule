@@ -215,7 +215,7 @@ class ShiftSchedules
     #[ApiProperty(
         description: 'Снимка на работната книга (Univer формат)',
         readable: true,
-        writable: false
+        writable: true
     )]
     public function getWorkbookSnapshot(): ?array
     {

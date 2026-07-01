@@ -4,6 +4,7 @@ import {
     useRecordContext,
     useGetManyReference,
     useGetList,
+    useRefresh,
 } from 'react-admin';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { TimeDistanceChart, ShiftBlock } from '../graphic-schedule/TimeDistanceChart';
@@ -83,6 +84,7 @@ const DiagramViewInner = ({ cleanScheduleId, record, selectedShiftScheduleId, on
     selectedShiftScheduleId: string | null;
     onShiftScheduleSelect: (id: string | null) => void;
 }) => {
+    const refresh = useRefresh();
     const { data: lines, isLoading, error } = useGetManyReference(
         'train_schedule_lines',
         { 
@@ -100,7 +102,7 @@ const DiagramViewInner = ({ cleanScheduleId, record, selectedShiftScheduleId, on
 
     const cleanShiftId = selectedShiftScheduleId ? String(selectedShiftScheduleId).split('/').pop() : undefined;
 
-    const { data: shiftDetails } = useGetManyReference(
+    const { data: shiftDetails, refetch: refetchShiftDetails } = useGetManyReference(
         'shift_schedule_details',
         {
             target: 'shift_schedule',
@@ -186,6 +188,10 @@ const DiagramViewInner = ({ cleanScheduleId, record, selectedShiftScheduleId, on
                 shiftSchedules={shiftSchedules}
                 selectedShiftScheduleId={selectedShiftScheduleId}
                 onShiftScheduleSelect={onShiftScheduleSelect}
+                onRefresh={() => {
+                    refresh();
+                    if (refetchShiftDetails) refetchShiftDetails();
+                }}
             />
         </Box>
     );
