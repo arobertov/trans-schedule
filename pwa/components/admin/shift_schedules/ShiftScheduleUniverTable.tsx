@@ -580,11 +580,58 @@ const estimateColumnWidths = (shifts: ShiftDetail[]) => {
     }, {});
 };
 
+const getShiftCodeParts = (code: string | null | undefined) => {
+    if (!code) return { typeRank: 4, num: 9999, raw: "" };
+    const norm = code.trim().toUpperCase();
+
+    let typeRank = 4;
+
+    // Match suffix character - e.g. "-С", "-Д", "-Н" (Cyrillic & Latin)
+    const suffixMatch = norm.replace(/\s+/g, "").match(/-([СДНCSDN])/i) || norm.match(/([СДНCSDN])\s*(?:\?|\(\d\)|\/)*$/i);
+    if (suffixMatch) {
+        const char = suffixMatch[1];
+        if (char === "С" || char === "C" || char === "S") {
+            typeRank = 1;
+        } else if (char === "Д" || char === "D") {
+            typeRank = 2;
+        } else if (char === "Н" || char === "N" || char === "H") {
+            typeRank = 3;
+        }
+    } else {
+        if (norm.includes("С") || norm.includes("S")) {
+            typeRank = 1;
+        } else if (norm.includes("Д") || norm.includes("D")) {
+            typeRank = 2;
+        } else if (norm.includes("Н") || norm.includes("N")) {
+            typeRank = 3;
+        }
+    }
+
+    const numMatch = norm.match(/\d+/);
+    const num = numMatch ? parseInt(numMatch[0], 10) : 0;
+
+    return { typeRank, num, raw: norm };
+};
+
+const compareShifts = (a: ShiftDetail, b: ShiftDetail) => {
+    const keyA = getShiftCodeParts(a.shift_code);
+    const keyB = getShiftCodeParts(b.shift_code);
+
+    if (keyA.typeRank !== keyB.typeRank) {
+        return keyA.typeRank - keyB.typeRank;
+    }
+    if (keyA.num !== keyB.num) {
+        return keyA.num - keyB.num;
+    }
+    return keyA.raw.localeCompare(keyB.raw, "bg-BG");
+};
+
 const buildWorkbookConfig = (schedule: { name: string; description: string }, shifts: ShiftDetail[]) => {
+    const sortedShifts = [...shifts].sort(compareShifts);
     const cellData: Record<number, Record<number, { v: string; s?: any }>> = {};
     const mergeData: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }> = [];
     const rowMeta: SheetRowMeta[] = [];
-    const columnData = estimateColumnWidths(shifts);
+    const columnData = estimateColumnWidths(sortedShifts);
 
     cellData[TITLE_ROW] = {
         0: { v: "ГРАФИК НА СМЕНИТЕ", s: STYLES.title },
@@ -610,7 +657,7 @@ const buildWorkbookConfig = (schedule: { name: string; description: string }, sh
 
     let currentSheetRow = DATA_ROW_START;
 
-    shifts.forEach((shift, shiftIndex) => {
+    sortedShifts.forEach((shift, shiftIndex) => {
         const groupStartRow = currentSheetRow;
         const routes = Array.isArray(shift.routes) ? shift.routes : [];
         const hasMultipleRoutes = routes.length > 1;
@@ -997,7 +1044,7 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
     }, []);
 
     useEffect(() => {
-        const nextDetails = (Array.isArray(data) ? data : []) as ShiftDetail[];
+        const nextDetails = [...((Array.isArray(data) ? data : []) as ShiftDetail[])].sort(compareShifts);
         detailsRef.current = nextDetails;
         lastSavedSnapshotRef.current = serializeSnapshot({
             schedule: scheduleInfo,
@@ -1273,25 +1320,53 @@ export const ShiftScheduleUniverTable = ({ record }: ShiftScheduleUniverTablePro
             scheduleAutoSave();
         });
 
-        // Load from saved snapshot (preserves formatting) or build fresh from API data
+        // Load from saved snapshot (preserves formatting) or build fresh from API data.
+        // If the saved workbook no longer matches the current detail rows, rebuild from API.
         const savedSnapshot = activeRecord?.workbook_snapshot;
         let workbookConfig: Record<string, any>;
         let rowMeta: SheetRowMeta[];
         let mergeData: Array<{ startRow: number; endRow: number; startColumn: number; endColumn: number }>;
+        const builtFromLiveData = buildWorkbookConfig({
+            name: formatPlainValue(activeRecord?.name),
+            description: formatPlainValue(activeRecord?.description),
+        }, detailsRef.current);
 
         if (savedSnapshot?.workbook) {
-            workbookConfig = savedSnapshot.workbook;
-            rowMeta = Array.isArray(savedSnapshot.rowMeta) ? savedSnapshot.rowMeta : [];
+            const savedRowMeta = Array.isArray(savedSnapshot.rowMeta) ? savedSnapshot.rowMeta : [];
             const sheetData = savedSnapshot.workbook?.sheets?.["shift-schedule-sheet"];
-            mergeData = Array.isArray(sheetData?.mergeData) ? sheetData.mergeData : [];
+            const savedMergeData = Array.isArray(sheetData?.mergeData) ? sheetData.mergeData : [];
+            const savedRowSignature = JSON.stringify(
+                savedRowMeta.map((meta) => ({
+                    detailId: meta.detailId,
+                    rowIndex: meta.rowIndex,
+                    isPrimaryRow: meta.isPrimaryRow,
+                    routeIndex: meta.routeIndex,
+                    acceptsRouteData: meta.acceptsRouteData,
+                }))
+            );
+            const liveRowSignature = JSON.stringify(
+                builtFromLiveData.rowMeta.map((meta) => ({
+                    detailId: meta.detailId,
+                    rowIndex: meta.rowIndex,
+                    isPrimaryRow: meta.isPrimaryRow,
+                    routeIndex: meta.routeIndex,
+                    acceptsRouteData: meta.acceptsRouteData,
+                }))
+            );
+
+            if (savedRowSignature === liveRowSignature) {
+                workbookConfig = savedSnapshot.workbook;
+                rowMeta = savedRowMeta;
+                mergeData = savedMergeData;
+            } else {
+                workbookConfig = builtFromLiveData.workbook;
+                rowMeta = builtFromLiveData.rowMeta;
+                mergeData = builtFromLiveData.mergeData;
+            }
         } else {
-            const built = buildWorkbookConfig({
-                name: formatPlainValue(activeRecord?.name),
-                description: formatPlainValue(activeRecord?.description),
-            }, detailsRef.current);
-            workbookConfig = built.workbook;
-            rowMeta = built.rowMeta;
-            mergeData = built.mergeData;
+            workbookConfig = builtFromLiveData.workbook;
+            rowMeta = builtFromLiveData.rowMeta;
+            mergeData = builtFromLiveData.mergeData;
         }
 
         univerRef.current = univer;

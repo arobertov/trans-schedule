@@ -57,8 +57,8 @@ const DEFAULT_SETTINGS: ShiftVisualSettings = {
     blockOffset: 5,
     blockHeight: 45,
     blockOpacity: 0.75,
-    labelFontSize: 9,
-    codeFontSize: 9,
+    labelFontSize: 8,
+    codeFontSize: 14,
     colorOverrides: {},
 };
 
@@ -96,6 +96,25 @@ const decimalToTime = (val: number): string => {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
+const normalizeShiftCode = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return '';
+    }
+
+    const standardized = trimmed
+        .replace(/\s+/g, ' ')
+        .replace(/\s*-\s*/g, '-')
+        .trim();
+
+    const canonicalMatch = standardized.match(/^СМ\s*(\d+)\s*-\s*([СДН])$/iu);
+    if (canonicalMatch) {
+        return `СМ${canonicalMatch[1]}-${canonicalMatch[2].toLocaleUpperCase('bg-BG')}`;
+    }
+
+    return standardized.toLocaleUpperCase('bg-BG');
+};
+
 export const TimeDistanceChart = ({ lines, stations, height = '800px', title = 'График Движение', scheduleId, shiftBlocks = [], shiftSchedules = [], selectedShiftScheduleId = null, onShiftScheduleSelect, onRefresh }: Props) => {
     const [mappings, setMappings] = useState<Record<string, string>>({});
     const [savedMappingsString, setSavedMappingsString] = useState<string>('{}');
@@ -115,19 +134,27 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
 
     // States for Manual Shift Drawing Mode
     const [isDrawMode, setIsDrawMode] = useState(false);
-    const [drawingStart, setDrawingStart] = useState<{ time: number; trainNumber: string } | null>(null);
+    const [drawingStart, setDrawingStart] = useState<{ time: number; trainNumber: string; stationTrack: string } | null>(null);
     const [manualShiftDialog, setManualShiftDialog] = useState<{
         open: boolean;
         trainNumber: string;
         startTime: string;
         endTime: string;
         shiftCode: string;
+        pickup_location: string;
+        pickup_route_number: string | null;
+        dropoff_location: string;
+        dropoff_route_number: string | null;
     }>({
         open: false,
         trainNumber: '',
         startTime: '',
         endTime: '',
         shiftCode: '',
+        pickup_location: '',
+        pickup_route_number: null,
+        dropoff_location: '',
+        dropoff_route_number: null,
     });
 
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -408,7 +435,10 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                 type: 'line',
                 data: data,
                 symbol: 'rect',
-                symbolSize: [2, 10],
+                symbolSize: isDrawMode ? [10, 16] : [2, 10],
+                cursor: isDrawMode
+                    ? `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><text y='20' font-size='20'>✏️</text></svg>") 0 20, pointer`
+                    : 'pointer',
                 lineStyle: {
                     width: 2
                 },
@@ -601,10 +631,19 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                         title: isDrawMode ? 'Изход от Чертане' : 'Ръчно Чертане на смени за влакове',
                         icon: 'path://M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
                         onclick: () => {
-                            setIsDrawMode(prev => !prev);
-                            setDrawingStart(null);
+                            setIsDrawMode(prev => {
+                                const next = !prev;
+                                if (!next) {
+                                    setDrawingStart(null);
+                                    setSuccessMessage(null);
+                                    setErrorMessage(null);
+                                }
+                                return next;
+                            });
                         },
-                        iconStyle: isDrawMode ? { borderColor: '#d32f2f', color: '#d32f2f' } : {},
+                        iconStyle: isDrawMode 
+                            ? { borderColor: '#d32f2f', color: '#d32f2f' } 
+                            : { borderColor: '#555', color: '#555' },
                     },
                     myShiftSchedule: {
                         show: shiftSchedules.length > 0,
@@ -613,7 +652,9 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                         onclick: () => {
                             handleOpenShiftDialog();
                         },
-                        iconStyle: selectedShiftScheduleId ? { borderColor: '#1976d2', color: '#1976d2' } : {},
+                        iconStyle: selectedShiftScheduleId 
+                            ? { borderColor: '#1976d2', color: '#1976d2' } 
+                            : { borderColor: '#555', color: '#555' },
                     },
                     myPrint: {
                         show: true,
@@ -869,63 +910,103 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                     <ReactECharts 
                         ref={echartsRef} 
                         option={option} 
-                        style={{ height: isFullScreen ? '100%' : dynamicChartHeight, width: '100%' }} 
+                        style={{ 
+                            height: isFullScreen ? '100%' : dynamicChartHeight, 
+                            width: '100%',
+                            cursor: isDrawMode
+                                ? `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><text y='20' font-size='20'>✏️</text></svg>") 0 20, pointer`
+                                : 'default'
+                        }} 
                         onEvents={{
-                            'mousedown': (params: any) => {
+                            'click': (params: any) => {
                                 if (!isDrawMode) return;
-                                const echartsInstance = echartsRef.current?.getEchartsInstance();
-                                if (!echartsInstance) return;
-
-                                // Convert pixels to internal grid coordinates (X, Y)
-                                const point = echartsInstance.convertFromPixel({ gridIndex: 0 }, [params.event.offsetX, params.event.offsetY]);
-                                if (!point) return;
-
-                                const decimalTime = point[0];
-                                const yIndex = Math.round(point[1]);
                                 
-                                // Fetch the actual train numbers corresponding to category axis keys
-                                const trainNumbersFromOption = option.yAxis.data;
-                                if (yIndex >= 0 && yIndex < trainNumbersFromOption.length) {
-                                    const trainNumber = trainNumbersFromOption[yIndex];
-                                    setDrawingStart({ time: decimalTime, trainNumber });
-                                }
-                            },
-                            'mouseup': (params: any) => {
-                                if (!isDrawMode || !drawingStart) return;
-                                const echartsInstance = echartsRef.current?.getEchartsInstance();
-                                if (!echartsInstance) return;
-
-                                const point = echartsInstance.convertFromPixel({ gridIndex: 0 }, [params.event.offsetX, params.event.offsetY]);
-                                if (!point) {
-                                    setDrawingStart(null);
+                                // Only allow clicking on a train point (series item)
+                                if (params.componentType !== 'series' || params.seriesType !== 'line' || !params.data) {
                                     return;
                                 }
 
-                                const decimalTimeEnd = point[0];
-                                const yIndex = Math.round(point[1]);
-                                const trainNumbersFromOption = option.yAxis.data;
+                                const trainNumber = params.seriesName;
+                                const decimalTime = params.data.value[0];
+                                const stationTrack = params.data.stationName;
+                                const timeStr = params.data.timeStr;
 
-                                if (yIndex >= 0 && yIndex < trainNumbersFromOption.length) {
-                                    const trainNumberEnd = trainNumbersFromOption[yIndex];
-                                    // Ensure user draws on the same train row
-                                    if (trainNumberEnd === drawingStart.trainNumber) {
-                                        const startTimeVal = Math.min(drawingStart.time, decimalTimeEnd);
-                                        const endTimeVal = Math.max(drawingStart.time, decimalTimeEnd);
-
-                                        // Clamp values to diagram min (4) and max (25) representing 04:00 - 01:00 (next day)
-                                        const finalStart = Math.max(4, Math.min(25, startTimeVal));
-                                        const finalEnd = Math.max(4, Math.min(25, endTimeVal));
-
-                                        setManualShiftDialog({
-                                            open: true,
-                                            trainNumber: drawingStart.trainNumber,
-                                            startTime: decimalToTime(finalStart),
-                                            endTime: decimalToTime(finalEnd),
-                                            shiftCode: '',
-                                        });
+                                if (!drawingStart) {
+                                    // First click
+                                    setDrawingStart({ time: decimalTime, trainNumber, stationTrack });
+                                    setSuccessMessage(`Избрана начална точка за влак ${trainNumber}: ${stationTrack} (${timeStr}). Сега кликнете върху крайна точка.`);
+                                    setErrorMessage(null);
+                                } else {
+                                    // Second click
+                                    if (trainNumber !== drawingStart.trainNumber) {
+                                        // User clicked on a different train. Reset start to this point to make it easy.
+                                        setDrawingStart({ time: decimalTime, trainNumber, stationTrack });
+                                        setSuccessMessage(`Променихте началната точка към влак ${trainNumber}: ${stationTrack} (${timeStr}). Сега изберете крайна.`);
+                                        return;
                                     }
+
+                                    const startTimeVal = Math.min(drawingStart.time, decimalTime);
+                                    const endTimeVal = Math.max(drawingStart.time, decimalTime);
+
+                                    const startTrack = drawingStart.time <= decimalTime ? drawingStart.stationTrack : stationTrack;
+                                    const endTrack = drawingStart.time <= decimalTime ? stationTrack : drawingStart.stationTrack;
+
+                                    const parseStationTrack = (str: string) => {
+                                        if (!str) return { location: '', route_number: null };
+                                        
+                                        const trimmed = str.trim();
+                                        const normalized = trimmed.toLowerCase();
+                                        if (normalized === 'depo' || normalized === 'депо') {
+                                            return {
+                                                location: 'Депо',
+                                                route_number: '*'
+                                            };
+                                        }
+                                        
+                                        if (trimmed.includes('_')) {
+                                            const parts = trimmed.split('_');
+                                            const loc = parts[0].trim();
+                                            const road = parts[1].trim();
+                                            
+                                            const displayLoc = /^\d+$/.test(loc) ? `МС-${loc}` : loc;
+                                            const displayRoad = `ПЪТ ${road}`;
+                                            return {
+                                                location: displayLoc,
+                                                route_number: displayRoad
+                                            };
+                                        }
+                                        
+                                        if (/^\d+$/.test(trimmed)) {
+                                            return {
+                                                location: `МС-${trimmed}`,
+                                                route_number: null
+                                            };
+                                        }
+                                        
+                                        return {
+                                            location: trimmed,
+                                            route_number: null
+                                        };
+                                    };
+
+                                    const parsedStart = parseStationTrack(startTrack);
+                                    const parsedEnd = parseStationTrack(endTrack);
+
+                                    setManualShiftDialog({
+                                        open: true,
+                                        trainNumber: trainNumber,
+                                        startTime: decimalToTime(startTimeVal),
+                                        endTime: decimalToTime(endTimeVal),
+                                        shiftCode: '',
+                                        pickup_location: parsedStart.location,
+                                        pickup_route_number: parsedStart.route_number,
+                                        dropoff_location: parsedEnd.location,
+                                        dropoff_route_number: parsedEnd.route_number
+                                    });
+
+                                    setDrawingStart(null);
+                                    setSuccessMessage(null);
                                 }
-                                setDrawingStart(null);
                             }
                         }}
                     />
@@ -1040,9 +1121,17 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
             >
                 <DialogTitle>Добавяне/Свързване на смяна към влак</DialogTitle>
                 <DialogContent>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2, mt: 1 }}>
-                        Изчертахте отрязък за влак <strong>{manualShiftDialog.trainNumber}</strong> от <strong>{manualShiftDialog.startTime}</strong> до <strong>{manualShiftDialog.endTime}</strong>.
-                    </Typography>
+                    <Box sx={{ mb: 2, mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <Typography variant="body2" color="text.secondary">
+                            Изчертахте отрязък за влак <strong>{manualShiftDialog.trainNumber}</strong> от <strong>{manualShiftDialog.startTime}</strong> до <strong>{manualShiftDialog.endTime}</strong>.
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Начало: <strong>{manualShiftDialog.pickup_location}</strong> {manualShiftDialog.pickup_route_number ? `(${manualShiftDialog.pickup_route_number})` : ''}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Край: <strong>{manualShiftDialog.dropoff_location}</strong> {manualShiftDialog.dropoff_route_number ? `(${manualShiftDialog.dropoff_route_number})` : ''}
+                        </Typography>
+                    </Box>
                     
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <TextField
@@ -1064,7 +1153,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                     <Button onClick={() => setManualShiftDialog(prev => ({ ...prev, open: false }))}>Отказ</Button>
                     <Button 
                         onClick={async () => {
-                            const code = manualShiftDialog.shiftCode.trim();
+                            const code = normalizeShiftCode(manualShiftDialog.shiftCode);
                             if (!code) {
                                 setErrorMessage('Моля въведете код на смяна!');
                                 return;
@@ -1075,21 +1164,23 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                                 const searchRes = await api.get('/shift_schedule_details', {
                                     params: {
                                         shift_schedule: `/shift_schedules/${selectedShiftScheduleId}`,
-                                        shift_code: code
+                                        shift_code: code,
+                                        pagination: false,
+                                        itemsPerPage: 10000
                                     }
                                 });
 
-                                const records = searchRes.data?.['hydra:member'] || [];
-                                const existingDetail = records.find((r: any) => (r.shift_code || '').trim().toLowerCase() === code.toLowerCase());
+                                const records = searchRes.data?.['hydra:member'] || searchRes.data?.['member'] || [];
+                                const existingDetail = records.find((r: any) => normalizeShiftCode(r.shift_code || '') === code);
 
                                 const newRouteObj = {
                                     route: manualShiftDialog.trainNumber,
                                     in_schedule: manualShiftDialog.startTime,
                                     from_schedule: manualShiftDialog.endTime,
-                                    pickup_location: '',
-                                    pickup_route_number: null,
-                                    dropoff_location: '',
-                                    dropoff_route_number: null,
+                                    pickup_location: manualShiftDialog.pickup_location,
+                                    pickup_route_number: manualShiftDialog.pickup_route_number,
+                                    dropoff_location: manualShiftDialog.dropoff_location,
+                                    dropoff_route_number: manualShiftDialog.dropoff_route_number,
                                     route_kilometers: 0
                                 };
 
@@ -1100,6 +1191,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                                     
                                     const cleanId = String(existingDetail.id || existingDetail['@id']).split('/').pop();
                                     await api.patch(`/shift_schedule_details/${cleanId}`, {
+                                        shift_code: code,
                                         routes: routes
                                     });
                                     setSuccessMessage(`Успешно добавихте отрязък за влак ${manualShiftDialog.trainNumber} към съществуваща смяна "${code}"`);
@@ -1116,6 +1208,15 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                                         kilometers: 0
                                     });
                                     setSuccessMessage(`Успешно създадохте нова смяна "${code}" с отрязък за влак ${manualShiftDialog.trainNumber}`);
+                                }
+
+                                // Clear stale workbook snapshot to force spreadsheet layout to rebuild fresh from database
+                                try {
+                                    await api.patch(`/shift_schedules/${selectedShiftScheduleId}`, {
+                                        workbook_snapshot: null
+                                    });
+                                } catch (snapErr) {
+                                    console.error("Failed to clear workbook snapshot:", snapErr);
                                 }
 
                                 // Trigger Diagram reload
