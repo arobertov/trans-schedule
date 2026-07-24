@@ -43,6 +43,7 @@ export const ShiftSchedulesList = () => (
     <List 
         actions={<ListActions />} 
         empty={<Empty />}
+        perPage={25}
     >
         <Datagrid rowClick="show">
             <RowNumberField />

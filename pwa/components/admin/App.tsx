@@ -355,7 +355,6 @@ const App = () => {
               list={PersonalAccountsList}
               create={PersonalAccountCreate}
               edit={PersonalAccountEdit}
-              options={{ label: "Лични сметки" }}
             />
             <ResourceGuesser name="calendars" list={CalendarList} create={CalendarCreate} edit={CalendarEdit} show={CalendarShow} />
             <ResourceGuesser name="train_schedules" list={TrainScheduleList} create={TrainScheduleCreate} edit={TrainScheduleEdit} show={TrainScheduleShow} />

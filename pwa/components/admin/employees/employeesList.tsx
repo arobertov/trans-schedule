@@ -18,6 +18,7 @@ import { Link } from 'react-router-dom';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import WorkIcon from '@mui/icons-material/Work';
 import { Box, Typography, Card, CardContent } from '@mui/material';
+import { CustomList } from "../../../helpers/CustomList";
 
 const ListActions = () => (
     <TopToolbar>
@@ -102,7 +103,7 @@ const RowNumberField = () => {
 };
 
 export const EmployeesList = () => (
-    <List
+    <CustomList
         actions={<ListActions />}
         empty={<Empty />}
         aside={<PositionFilters />}
@@ -121,5 +122,5 @@ export const EmployeesList = () => (
                 <TextField source="name" />
             </ReferenceField>
         </DatagridConfigurable>
-    </List>
+    </CustomList>
 );

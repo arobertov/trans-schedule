@@ -1,12 +1,14 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
-import { Box, Button, Chip, FormControl, InputLabel, MenuItem, Select, Stack, Typography, Accordion, AccordionSummary, AccordionDetails, Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Slider, TextField } from '@mui/material';
+import { Box, Button, Chip, FormControl, InputLabel, MenuItem, Select, Stack, Typography, Accordion, AccordionSummary, AccordionDetails, Snackbar, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Slider, TextField, Radio, RadioGroup, FormControlLabel, FormLabel, CircularProgress } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import TransformIcon from '@mui/icons-material/Transform';
 import SaveIcon from '@mui/icons-material/Save';
 import TuneIcon from '@mui/icons-material/Tune';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import api from '../../../jwt-frontend-auth/src/api/apiClient';
+import { sortShiftRoutes, calculateShiftAutoValues } from '../../../helpers/shiftCalculations';
 
 interface ScheduleLine {
     id: number;
@@ -157,6 +159,335 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
         dropoff_route_number: null,
     });
 
+    const [editBlockDialog, setEditBlockDialog] = useState<{
+        open: boolean;
+        shiftCode: string;
+        originalShiftCode: string;
+        selectedBlock: ShiftBlock | null;
+        startStopVal: number;
+        endStopVal: number;
+        renameOption: 'segment' | 'entire';
+        loading: boolean;
+    }>({
+        open: false,
+        shiftCode: '',
+        originalShiftCode: '',
+        selectedBlock: null,
+        startStopVal: 0,
+        endStopVal: 0,
+        renameOption: 'segment',
+        loading: false,
+    });
+    const [fetchedShiftDetail, setFetchedShiftDetail] = useState<any | null>(null);
+
+    const currentTrainStops = useMemo(() => {
+        if (!editBlockDialog.selectedBlock) return [];
+        return lines
+            .filter(l => l.train_number === editBlockDialog.selectedBlock?.trainNumber)
+            .map(l => {
+                const tStr = l.departure_time || l.arrival_time || '';
+                const tVal = timeToDecimal(tStr);
+                return {
+                    line: l,
+                    timeVal: tVal,
+                    timeStr: tVal !== null ? decimalToTime(tVal) : '',
+                    label: `${l.station_track} (${tVal !== null ? decimalToTime(tVal) : ''})`
+                };
+            })
+            .filter(s => s.timeVal !== null)
+            .sort((a, b) => a.timeVal! - b.timeVal!);
+    }, [editBlockDialog.selectedBlock, lines]);
+
+    const handleBlockClick = async (clickedCode: string, effectiveTrain: string, clickedStartTime: number, clickedEndTime: number) => {
+        const matchedBlock = shiftBlocks.find(b => {
+            const effTrain = mappings[b.trainNumber] || b.trainNumber;
+            return b.shiftCode === clickedCode &&
+                   effTrain === effectiveTrain &&
+                   Math.abs(b.startTime - clickedStartTime) < 0.05;
+        }) || shiftBlocks.find(b => b.shiftCode === clickedCode);
+
+        if (!matchedBlock) {
+            setErrorMessage('Не беше намерен оригинален блок за избраната смяна!');
+            return;
+        }
+
+        setEditBlockDialog({
+            open: true,
+            shiftCode: clickedCode,
+            originalShiftCode: clickedCode,
+            selectedBlock: matchedBlock,
+            startStopVal: matchedBlock.startTime,
+            endStopVal: matchedBlock.endTime,
+            renameOption: 'segment',
+            loading: true,
+        });
+
+        try {
+            const searchRes = await api.get('/shift_schedule_details', {
+                params: {
+                    shift_schedule: `/shift_schedules/${selectedShiftScheduleId}`,
+                    shift_code: clickedCode,
+                    pagination: false,
+                }
+            });
+
+            const records = searchRes.data?.['hydra:member'] || searchRes.data?.['member'] || [];
+            const existingDetail = records.find((r: any) => normalizeShiftCode(r.shift_code || '') === normalizeShiftCode(clickedCode));
+
+            if (!existingDetail) {
+                throw new Error(`Смяна с код "${clickedCode}" не беше намерена в базата данни!`);
+            }
+
+            setFetchedShiftDetail(existingDetail);
+            setEditBlockDialog((prev: any) => ({
+                ...prev,
+                loading: false,
+            }));
+        } catch (err: any) {
+            console.error('Error fetching shift detail for block:', err);
+            const msg = err.response?.data?.['hydra:description'] || err.response?.data?.detail || err.message;
+            setErrorMessage(`Грешка при зареждане на детайли: ${msg}`);
+            setEditBlockDialog((prev: any) => ({ ...prev, open: false, loading: false }));
+        }
+    };
+
+    const handleDeleteSegment = async () => {
+        if (!fetchedShiftDetail || !editBlockDialog.selectedBlock) return;
+        const { selectedBlock } = editBlockDialog;
+        
+        setEditBlockDialog((prev: any) => ({ ...prev, loading: true }));
+        try {
+            const routes = Array.isArray(fetchedShiftDetail.routes) ? [...fetchedShiftDetail.routes] : [];
+            const originalRouteIndex = routes.findIndex((r: any) => {
+                return String(r.route) === String(selectedBlock.trainNumber) &&
+                       Math.abs((timeToDecimal(r.in_schedule) || 0) - selectedBlock.startTime) < 0.05 &&
+                       Math.abs((timeToDecimal(r.from_schedule) || 0) - selectedBlock.endTime) < 0.05;
+            });
+
+            if (originalRouteIndex === -1) {
+                throw new Error('Маршрутът не беше намерен в списъка на смяната!');
+            }
+
+            routes.splice(originalRouteIndex, 1);
+            const cleanDetailId = String(fetchedShiftDetail.id || fetchedShiftDetail['@id']).split('/').pop();
+
+            if (routes.length === 0) {
+                try {
+                    await api.delete(`/shift_schedule_details/${cleanDetailId}`);
+                } catch (delErr) {
+                    console.warn("Delete failed, attempting to patch with empty routes", delErr);
+                    await api.patch(`/shift_schedule_details/${cleanDetailId}`, { routes: [] });
+                }
+            } else {
+                await api.patch(`/shift_schedule_details/${cleanDetailId}`, { routes });
+            }
+
+            try {
+                await api.patch(`/shift_schedules/${selectedShiftScheduleId}`, { workbook_snapshot: null });
+            } catch (snapErr) {
+                console.error("Failed to clear workbook snapshot:", snapErr);
+            }
+
+            setSuccessMessage(`Успешно изтрихте отрязъка за влак ${selectedBlock.trainNumber} от смяна "${editBlockDialog.originalShiftCode}"`);
+            setEditBlockDialog((prev: any) => ({ ...prev, open: false, loading: false }));
+            if (onRefresh) onRefresh();
+        } catch (err: any) {
+            console.error(err);
+            const backendMsg = err.response?.data?.['hydra:description'] || err.response?.data?.detail || err.message;
+            setErrorMessage(`Грешка при изтриване на сегмент: ${backendMsg}`);
+            setEditBlockDialog((prev: any) => ({ ...prev, loading: false }));
+        }
+    };
+
+    const handleSaveBlockEdit = async () => {
+        if (!fetchedShiftDetail || !editBlockDialog.selectedBlock) return;
+        
+        const code = normalizeShiftCode(editBlockDialog.shiftCode);
+        if (!code) {
+            setErrorMessage('Моля въведете код на смяна!');
+            return;
+        }
+
+        if (editBlockDialog.endStopVal <= editBlockDialog.startStopVal) {
+            setErrorMessage('Крайната спирка трябва да е след началната спирка!');
+            return;
+        }
+
+        const startStopObj = currentTrainStops.find((s: any) => s.timeVal === editBlockDialog.startStopVal);
+        const endStopObj = currentTrainStops.find((s: any) => s.timeVal === editBlockDialog.endStopVal);
+        if (!startStopObj || !endStopObj) {
+            setErrorMessage('Моля изберете валидни начална и крайна спирка!');
+            return;
+        }
+
+        setEditBlockDialog((prev: any) => ({ ...prev, loading: true }));
+        try {
+            const { selectedBlock } = editBlockDialog;
+            const originalRoutes = Array.isArray(fetchedShiftDetail.routes) ? [...fetchedShiftDetail.routes] : [];
+            const originalRouteIndex = originalRoutes.findIndex((r: any) => {
+                return String(r.route) === String(selectedBlock.trainNumber) &&
+                       Math.abs((timeToDecimal(r.in_schedule) || 0) - selectedBlock.startTime) < 0.05 &&
+                       Math.abs((timeToDecimal(r.from_schedule) || 0) - selectedBlock.endTime) < 0.05;
+            });
+
+            if (originalRouteIndex === -1) {
+                throw new Error('Оригиналният маршрут не беше намерен в списъка на смяната!');
+            }
+
+            const originalRoute = originalRoutes[originalRouteIndex];
+
+            const parseStationTrack = (str: string) => {
+                if (!str) return { location: '', route_number: null };
+                const trimmed = str.trim();
+                const normalized = trimmed.toLowerCase();
+                if (normalized === 'depo' || normalized === 'депо') {
+                    return { location: 'Депо', route_number: '*' };
+                }
+                if (trimmed.includes('_')) {
+                    const parts = trimmed.split('_');
+                    const loc = parts[0].trim();
+                    const road = parts[1].trim();
+                    const displayLoc = /^\d+$/.test(loc) ? `МС-${loc}` : loc;
+                    return { location: displayLoc, route_number: `ПЪТ ${road}` };
+                }
+                if (/^\d+$/.test(trimmed)) {
+                    return { location: `МС-${trimmed}`, route_number: null };
+                }
+                return { location: trimmed, route_number: null };
+            };
+
+            const parsedStart = parseStationTrack(startStopObj.line.station_track);
+            const parsedEnd = parseStationTrack(endStopObj.line.station_track);
+
+            const updatedRouteObj = {
+                route: selectedBlock.trainNumber,
+                in_schedule: startStopObj.timeStr,
+                from_schedule: endStopObj.timeStr,
+                pickup_location: parsedStart.location,
+                pickup_route_number: parsedStart.route_number,
+                dropoff_location: parsedEnd.location,
+                dropoff_route_number: parsedEnd.route_number,
+                route_kilometers: originalRoute.route_kilometers || 0
+            };
+
+            const cleanSourceId = String(fetchedShiftDetail.id || fetchedShiftDetail['@id']).split('/').pop();
+
+            // Load autocalculation settings
+            let autoSettings = {
+                doctorOffset: -60,
+                dutyOfficerOffset: 30,
+                endOffset: 15,
+                nightStart: "22:00",
+                nightEnd: "06:00"
+            };
+            const savedAuto = localStorage.getItem("shift_schedule_auto_settings");
+            if (savedAuto) {
+                try {
+                    autoSettings = { ...autoSettings, ...JSON.parse(savedAuto) };
+                } catch (e) {}
+            }
+
+            if (code === editBlockDialog.originalShiftCode) {
+                // Case A: No shift code change - just resize
+                const updatedRoutes = [...originalRoutes];
+                updatedRoutes[originalRouteIndex] = updatedRouteObj;
+
+                const sortedRoutes = sortShiftRoutes(updatedRoutes);
+                const autoValues = calculateShiftAutoValues(sortedRoutes, autoSettings, code);
+
+                await api.patch(`/shift_schedule_details/${cleanSourceId}`, {
+                    routes: sortedRoutes,
+                    ...autoValues
+                });
+                setSuccessMessage(`Промените по смяна "${code}" са записани успешно!`);
+            } else if (editBlockDialog.renameOption === 'entire') {
+                // Case B: Rename entire shift (rename the shift code on backend)
+                const updatedRoutes = [...originalRoutes];
+                updatedRoutes[originalRouteIndex] = updatedRouteObj;
+
+                const sortedRoutes = sortShiftRoutes(updatedRoutes);
+                const autoValues = calculateShiftAutoValues(sortedRoutes, autoSettings, code);
+
+                await api.patch(`/shift_schedule_details/${cleanSourceId}`, {
+                    shift_code: code,
+                    routes: sortedRoutes,
+                    ...autoValues
+                });
+                setSuccessMessage(`Смяната е преименувана на "${code}" и блокът е актуализиран!`);
+            } else {
+                // Case C: Move only this block (segment) to a different shift code
+                // 1. Prepare target block
+                // Search if detail with `code` already exists
+                const searchRes = await api.get('/shift_schedule_details', {
+                    params: {
+                        shift_schedule: `/shift_schedules/${selectedShiftScheduleId}`,
+                        shift_code: code,
+                        pagination: false,
+                    }
+                });
+
+                const records = searchRes.data?.['hydra:member'] || searchRes.data?.['member'] || [];
+                const targetDetail = records.find((r: any) => normalizeShiftCode(r.shift_code || '') === code);
+
+                if (targetDetail) {
+                    const cleanTargetId = String(targetDetail.id || targetDetail['@id']).split('/').pop();
+                    const combinedRoutes = [...(targetDetail.routes || []), updatedRouteObj];
+                    const sortedRoutes = sortShiftRoutes(combinedRoutes);
+                    const autoValues = calculateShiftAutoValues(sortedRoutes, autoSettings, code);
+
+                    await api.patch(`/shift_schedule_details/${cleanTargetId}`, {
+                        routes: sortedRoutes,
+                        ...autoValues
+                    });
+                } else {
+                    const sortedRoutes = sortShiftRoutes([updatedRouteObj]);
+                    const autoValues = calculateShiftAutoValues(sortedRoutes, autoSettings, code);
+
+                    await api.post('/shift_schedule_details', {
+                        shift_schedule: `/shift_schedules/${selectedShiftScheduleId}`,
+                        shift_code: code,
+                        routes: sortedRoutes,
+                        ...autoValues,
+                        kilometers: 0
+                    });
+                }
+
+                // 2. Remove from source
+                const updatedSourceRoutes = originalRoutes.filter((_, idx) => idx !== originalRouteIndex);
+                if (updatedSourceRoutes.length === 0) {
+                    try {
+                        await api.delete(`/shift_schedule_details/${cleanSourceId}`);
+                    } catch (delErr) {
+                        await api.patch(`/shift_schedule_details/${cleanSourceId}`, { routes: [] });
+                    }
+                } else {
+                    const sortedRoutes = sortShiftRoutes(updatedSourceRoutes);
+                    const autoValues = calculateShiftAutoValues(sortedRoutes, autoSettings, detail.shift_code);
+
+                    await api.patch(`/shift_schedule_details/${cleanSourceId}`, {
+                        routes: sortedRoutes,
+                        ...autoValues
+                    });
+                }
+                setSuccessMessage(`Преместихте отрязъка на влак ${selectedBlock.trainNumber} в смяна "${code}"!`);
+            }
+
+            try {
+                await api.patch(`/shift_schedules/${selectedShiftScheduleId}`, { workbook_snapshot: null });
+            } catch (snapErr) {
+                console.error("Failed to clear workbook snapshot:", snapErr);
+            }
+
+            setEditBlockDialog((prev: any) => ({ ...prev, open: false, loading: false }));
+            if (onRefresh) onRefresh();
+        } catch (err: any) {
+            console.error(err);
+            const backendMsg = err.response?.data?.['hydra:description'] || err.response?.data?.detail || err.message;
+            setErrorMessage(`Грешка при записване: ${backendMsg}`);
+            setEditBlockDialog((prev: any) => ({ ...prev, loading: false }));
+        }
+    };
+
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -226,7 +557,8 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
         return Array.from(all).filter(t => !mappings[t]).length;
     }, [lines, mappings]);
 
-    const dynamicChartHeight = Math.max(400, visibleTrainCount * shiftSettings.rowSpacing + 160);
+    // Filter out fixed heights; use 100% of the given height prop
+    const dynamicChartHeight = '100%';
 
     // Extract all unique train numbers for the dropdowns
     const allTrainNumbers = useMemo(() => {
@@ -919,6 +1251,13 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                         }} 
                         onEvents={{
                             'click': (params: any) => {
+                                // 1. Click on a shift block (Смени custom series)
+                                if (params.componentType === 'series' && params.seriesName === 'Смени' && params.value) {
+                                    const [startTime, effectiveTrain, endTime, shiftCode] = params.value;
+                                    handleBlockClick(shiftCode, effectiveTrain, startTime, endTime);
+                                    return;
+                                }
+
                                 if (!isDrawMode) return;
                                 
                                 // Only allow clicking on a train point (series item)
@@ -1015,6 +1354,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
 
             <Snackbar
                 open={showSaveSuccess}
+                container={chartContainerRef.current || undefined}
                 autoHideDuration={4000}
                 onClose={() => setShowSaveSuccess(false)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
@@ -1024,7 +1364,13 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                 </Alert>
             </Snackbar>
 
-            <Dialog open={shiftDialogOpen} onClose={() => setShiftDialogOpen(false)} maxWidth="sm" fullWidth>
+            <Dialog 
+                open={shiftDialogOpen} 
+                container={chartContainerRef.current || undefined} // <--- ДОБАВИ ТОВА
+                onClose={() => setShiftDialogOpen(false)} 
+                maxWidth="sm" 
+                fullWidth
+            >
                 <DialogTitle>Избор на график на смените</DialogTitle>
                 <DialogContent>
                     <FormControl fullWidth sx={{ mt: 1 }}>
@@ -1033,6 +1379,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                             value={pendingScheduleId}
                             label="График на смените"
                             onChange={(e) => setPendingScheduleId(e.target.value)}
+                            MenuProps={{ container: chartContainerRef.current || undefined }}
                         >
                             {shiftSchedules.map(s => (
                                 <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
@@ -1048,7 +1395,13 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
             </Dialog>
 
             {/* ── Print dialog ───────────────────────────────────────────── */}
-            <Dialog open={printDialogOpen} onClose={() => setPrintDialogOpen(false)} maxWidth="xs" fullWidth>
+            <Dialog 
+                open={printDialogOpen} 
+                container={chartContainerRef.current || undefined} // <--- ДОБАВИ ТОВА
+                onClose={() => setPrintDialogOpen(false)} 
+                maxWidth="xs" 
+                fullWidth
+            >
                 <DialogTitle>Печат на диаграмата</DialogTitle>
                 <DialogContent>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -1058,6 +1411,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                                 value={printFormat}
                                 label="Формат"
                                 onChange={(e) => setPrintFormat(e.target.value as typeof printFormat)}
+                                MenuProps={{ container: chartContainerRef.current || undefined }}
                             >
                                 <MenuItem value="A4">A4 (210 × 297 mm)</MenuItem>
                                 <MenuItem value="A3">A3 (297 × 420 mm)</MenuItem>
@@ -1073,6 +1427,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                                 value={printOrientation}
                                 label="Ориентация"
                                 onChange={(e) => setPrintOrientation(e.target.value as typeof printOrientation)}
+                                MenuProps={{ container: chartContainerRef.current || undefined }}
                             >
                                 <MenuItem value="landscape">Хоризонтална (Landscape)</MenuItem>
                                 <MenuItem value="portrait">Вертикална (Portrait)</MenuItem>
@@ -1114,7 +1469,8 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
 
             {/* ── Manual Shift Drawing dialog ───────────────────────────────── */}
             <Dialog 
-                open={manualShiftDialog.open} 
+                open={manualShiftDialog.open}
+                container={chartContainerRef.current || undefined} // <--- ДОБАВИ ТОВА 
                 onClose={() => setManualShiftDialog(prev => ({ ...prev, open: false }))} 
                 maxWidth="sm" 
                 fullWidth
@@ -1184,27 +1540,46 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                                     route_kilometers: 0
                                 };
 
+                                // Load default auto settings
+                                let autoSettings = {
+                                    doctorOffset: -60,
+                                    dutyOfficerOffset: 30,
+                                    endOffset: 15,
+                                    nightStart: "22:00",
+                                    nightEnd: "06:00"
+                                };
+                                const savedAuto = localStorage.getItem("shift_schedule_auto_settings");
+                                if (savedAuto) {
+                                    try {
+                                        autoSettings = { ...autoSettings, ...JSON.parse(savedAuto) };
+                                    } catch (e) {}
+                                }
+
                                 if (existingDetail) {
                                     // Append route to existing details routes
                                     const routes = Array.isArray(existingDetail.routes) ? [...existingDetail.routes] : [];
                                     routes.push(newRouteObj);
                                     
+                                    const sortedRoutes = sortShiftRoutes(routes);
+                                    const autoValues = calculateShiftAutoValues(sortedRoutes, autoSettings, code);
+
                                     const cleanId = String(existingDetail.id || existingDetail['@id']).split('/').pop();
                                     await api.patch(`/shift_schedule_details/${cleanId}`, {
                                         shift_code: code,
-                                        routes: routes
+                                        routes: sortedRoutes,
+                                        ...autoValues
                                     });
                                     setSuccessMessage(`Успешно добавихте отрязък за влак ${manualShiftDialog.trainNumber} към съществуваща смяна "${code}"`);
                                 } else {
                                     // Create a completely new shift detail row
+                                    const sortedRoutes = sortShiftRoutes([newRouteObj]);
+                                    const autoValues = calculateShiftAutoValues(sortedRoutes, autoSettings, code);
+
                                     await api.post('/shift_schedule_details', {
                                         shift_schedule: `/shift_schedules/${selectedShiftScheduleId}`,
                                         shift_code: code,
-                                        routes: [newRouteObj],
-                                        at_doctor: '00:00',
-                                        at_duty_officer: '00:00',
-                                        shift_end: '00:00',
-                                        worked_time: '00:00',
+                                        routes: sortedRoutes,
+                                        ...autoValues,
                                         kilometers: 0
                                     });
                                     setSuccessMessage(`Успешно създадохте нова смяна "${code}" с отрязък за влак ${manualShiftDialog.trainNumber}`);
@@ -1239,8 +1614,145 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
                 </DialogActions>
             </Dialog>
 
+            {/* ── Edit Shift Block (Rename/Resize) dialog ───────────────────── */}
+            <Dialog
+                open={editBlockDialog.open}
+                container={chartContainerRef.current || undefined} // <--- ДОБАВИ ТОВА
+                onClose={() => !editBlockDialog.loading && setEditBlockDialog(prev => ({ ...prev, open: false }))}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Редактиране на блок за смяна</DialogTitle>
+                <DialogContent>
+                    {editBlockDialog.loading ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4 }}>
+                            <CircularProgress />
+                        </Box>
+                    ) : (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 1 }}>
+                            <Box sx={{ p: 1.5, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                    Влак: <strong>{editBlockDialog.selectedBlock?.trainNumber}</strong>
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    Оригинален код: <strong>{editBlockDialog.originalShiftCode}</strong>
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    Текущо време: {decimalToTime(editBlockDialog.selectedBlock?.startTime || 0)} – {decimalToTime(editBlockDialog.selectedBlock?.endTime || 0)}
+                                </Typography>
+                            </Box>
+
+                            <TextField
+                                label="Код на смяната"
+                                fullWidth
+                                variant="outlined"
+                                size="small"
+                                value={editBlockDialog.shiftCode}
+                                onChange={(e) => setEditBlockDialog(prev => ({ ...prev, shiftCode: e.target.value }))}
+                            />
+
+                            {normalizeShiftCode(editBlockDialog.shiftCode) !== normalizeShiftCode(editBlockDialog.originalShiftCode) && (
+                                <FormControl component="fieldset">
+                                    <FormLabel component="legend" sx={{ fontSize: '0.85rem' }}>Опция за преименуване</FormLabel>
+                                    <RadioGroup
+                                        value={editBlockDialog.renameOption}
+                                        onChange={(e) => setEditBlockDialog(prev => ({ ...prev, renameOption: e.target.value as 'segment' | 'entire' }))}
+                                    >
+                                        <FormControlLabel
+                                            value="segment"
+                                            control={<Radio size="small" />}
+                                            label="Промени само за този отрязък (премести в друга смяна)"
+                                            componentsProps={{ typography: { variant: 'body2' } }}
+                                        />
+                                        <FormControlLabel
+                                            value="entire"
+                                            control={<Radio size="small" />}
+                                            label="Преименувай цялата смяна (за всички нейни отрязъци)"
+                                            componentsProps={{ typography: { variant: 'body2' } }}
+                                        />
+                                    </RadioGroup>
+                                </FormControl>
+                            )}
+
+                            <Box sx={{ borderTop: '1px solid #eee', pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <Typography variant="body2" fontWeight="bold">Преоразмеряване (използване на станции по оста):</Typography>
+                                <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel>Начална станция</InputLabel>
+                                        <Select
+                                            value={editBlockDialog.startStopVal}
+                                            label="Начална станция"
+                                            onChange={(e) => setEditBlockDialog(prev => ({ ...prev, startStopVal: e.target.value as number }))}
+                                            MenuProps={{ container: chartContainerRef.current || undefined }}
+                                        >
+                                            {currentTrainStops.map(stop => (
+                                                <MenuItem key={stop.timeVal} value={stop.timeVal!}>
+                                                    {stop.label}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel>Крайна станция</InputLabel>
+                                        <Select
+                                            value={editBlockDialog.endStopVal}
+                                            label="Крайна станция"
+                                            onChange={(e) => setEditBlockDialog(prev => ({ ...prev, endStopVal: e.target.value as number }))}
+                                            MenuProps={{ container: chartContainerRef.current || undefined }}
+                                        >
+                                            {currentTrainStops.map(stop => (
+                                                <MenuItem key={stop.timeVal} value={stop.timeVal!}>
+                                                    {stop.label}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                                {editBlockDialog.endStopVal <= editBlockDialog.startStopVal && (
+                                    <Typography variant="caption" color="error">
+                                        * Крайната станция трябва да бъде след началната станция!
+                                    </Typography>
+                                )}
+                            </Box>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ justifyContent: 'space-between', px: 3, pb: 2 }}>
+                    <Button
+                        color="error"
+                        variant="outlined"
+                        startIcon={<DeleteIcon />}
+                        disabled={editBlockDialog.loading}
+                        onClick={handleDeleteSegment}
+                    >
+                        Изтрий сегмент
+                    </Button>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                            disabled={editBlockDialog.loading}
+                            onClick={() => setEditBlockDialog(prev => ({ ...prev, open: false }))}
+                        >
+                            Отказ
+                        </Button>
+                        <Button
+                            variant="contained"
+                            disabled={
+                                editBlockDialog.loading ||
+                                !editBlockDialog.shiftCode.trim() ||
+                                editBlockDialog.endStopVal <= editBlockDialog.startStopVal
+                            }
+                            onClick={handleSaveBlockEdit}
+                        >
+                            Запази
+                        </Button>
+                    </Box>
+                </DialogActions>
+            </Dialog>
+
             <Snackbar
                 open={!!errorMessage}
+                container={chartContainerRef.current || undefined}
                 autoHideDuration={6000}
                 onClose={() => setErrorMessage(null)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
@@ -1252,6 +1764,7 @@ export const TimeDistanceChart = ({ lines, stations, height = '800px', title = '
 
             <Snackbar
                 open={!!successMessage}
+                container={chartContainerRef.current || undefined}
                 autoHideDuration={4000}
                 onClose={() => setSuccessMessage(null)}
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}

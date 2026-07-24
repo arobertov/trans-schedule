@@ -17,7 +17,7 @@ const getMonthName = (month: number) => {
 };
 
 export const MonthlyScheduleList = () => (
-    <List filters={listFilters} sort={{ field: 'id', order: 'DESC' }}>
+    <List filters={listFilters} sort={{ field: 'id', order: 'DESC' }} perPage={25}>
         <Datagrid rowClick="edit">
              <FunctionField 
                 label="Месец" 

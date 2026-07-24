@@ -1,6 +1,5 @@
 import * as React from "react";
 import {
-  List,
   Datagrid,
   TextField,
   EditButton,
@@ -14,6 +13,7 @@ import { FormControlLabel, Switch, Tooltip } from "@mui/material";
 import { getHighestRoleInfo, ROLES, useCan } from "../../../helpers/RoleMaper";
 import { getRegistrationAllowed, setRegistrationAllowed } from "../../../helpers/registrationSettings";
 import RoleChip from "./roleChip";
+import { CustomList } from "../../../helpers/CustomList";
 
 const UsersListActions = () => {
   const can = useCan();
@@ -85,7 +85,7 @@ const UsersListActions = () => {
 
 export const UsersList = () => {
   return (
-    <List actions={<UsersListActions />} title="Потребители">
+    <CustomList actions={<UsersListActions />} title="Потребители">
       <Datagrid>
         <TextField source="username" label="Потребителско име" />
         <TextField source="firstName" label="Име"/>
@@ -106,6 +106,6 @@ export const UsersList = () => {
         <EditButton label="Редактирай" />
         <DeleteButton label="Изтрий" />
       </Datagrid>
-    </List>
+    </CustomList>
   );
 };

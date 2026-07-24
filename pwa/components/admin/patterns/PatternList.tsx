@@ -8,9 +8,10 @@ import {
   EditButton,
   DeleteButton,
 } from "react-admin";
+import { CustomList } from "../../../helpers/CustomList";
 
 export const PatternList = () => (
-  <List>
+  <CustomList>
     <Datagrid rowClick="show">
       <TextField source="name" label="Наименование" />
       <NumberField source="total_positions" label="Брой позиции" />
@@ -20,5 +21,5 @@ export const PatternList = () => (
       <EditButton />
       <DeleteButton />
     </Datagrid>
-  </List>
+  </CustomList>
 );

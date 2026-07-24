@@ -1,10 +1,11 @@
-import { Datagrid, List, TextField, DateField, ReferenceField, NumberField, FunctionField, Create, Edit, SimpleForm, ReferenceInput, SelectInput, NumberInput, required, Show, useRecordContext, useInput, Toolbar, SaveButton, EditButton } from "react-admin";
+import { Datagrid, TextField, DateField, ReferenceField, NumberField, FunctionField, Create, Edit, SimpleForm, ReferenceInput, SelectInput, NumberInput, required, Show, useRecordContext, useInput, Toolbar, SaveButton, EditButton } from "react-admin";
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Box, Button, useTheme, MenuItem, Select, FormControl, Popover, IconButton, Tooltip, Grid } from "@mui/material";
 import PrintIcon from '@mui/icons-material/Print';
 import PaletteIcon from '@mui/icons-material/Palette';
 import RestoreIcon from '@mui/icons-material/Restore';
 import { useFormContext, Controller } from "react-hook-form";
 import { useState, useEffect } from "react";
+import { CustomList } from "../../../helpers/CustomList";
 
 // === Components ===
 const DebouncedColorInput = ({ value, onChange, ...props }: any) => {
@@ -197,7 +198,7 @@ const ColorLegend = ({ colors, onColorChange, onReset }: any) => {
 const months = ['', 'Януари', 'Февруари', 'Март', 'Април', 'Май', 'Юни', 'Юли', 'Август', 'Септември', 'Октомври', 'Ноември', 'Декември'];
 
 export const MatrixList = () => (
-    <List>
+    <CustomList>
         <Datagrid rowClick="show">
             <NumberField source="year" label="Година" />
             <FunctionField source="month" label="Месец" render={(record: any) => months[record.month]} />
@@ -207,7 +208,7 @@ export const MatrixList = () => (
             <NumberField source="start_position" label="Начална позиция" />
             <DateField source="updated_at" label="Последна промяна" showTime />
         </Datagrid>
-    </List>
+    </CustomList>
 );
 
 // === Create Component ===

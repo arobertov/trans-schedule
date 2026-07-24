@@ -1,7 +1,8 @@
 import { Datagrid, List, TextField, ArrayField, SingleFieldList, ChipField, ReferenceField } from "react-admin";
+import { CustomList } from "../../../helpers/CustomList";
 
 export const TrainDiagramList = () => (
-  <List>
+  <CustomList>
     <Datagrid rowClick="show">
       <TextField source="name" label="Име" />
       <ReferenceField source="trainSchedule" reference="train_schedules" label="Разписание">
@@ -13,5 +14,5 @@ export const TrainDiagramList = () => (
          </SingleFieldList>
       </ArrayField>
     </Datagrid>
-  </List>
+  </CustomList>
 );

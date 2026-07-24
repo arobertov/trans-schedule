@@ -27,9 +27,6 @@ use Symfony\Component\Validator\Constraints as Assert;
     mercure: true,
     normalizationContext: ['groups' => ['schedule:read']], 
     denormalizationContext: ['groups' => ['schedule:write']],
-    paginationItemsPerPage: 30,
-    paginationClientEnabled: true,
-    paginationClientItemsPerPage: true,
     operations: [
         new GetCollection(normalizationContext: ['groups' => ['schedule:list']]),
         new Get(),

@@ -177,7 +177,7 @@ const DiagramViewInner = ({ cleanScheduleId, record, selectedShiftScheduleId, on
     if (stations.length === 0) return <Typography>Няма зададени станции за тази диаграма</Typography>;
 
     return (
-        <Box sx={{ height: '80vh', width: '100%', mt: 2 }}>
+        <Box sx={{ height: 'calc(100vh - 150px)', width: '100%', mt: 2 }}>
             <TimeDistanceChart 
                 lines={lines} 
                 stations={stations} 

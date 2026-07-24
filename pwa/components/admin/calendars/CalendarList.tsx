@@ -1,7 +1,8 @@
 import { Datagrid, List, NumberField, FunctionField } from 'react-admin';
+import { CustomList } from "../../../helpers/CustomList";
 
 export const CalendarList = () => (
-    <List sort={{ field: 'year', order: 'DESC' }} title="Календари">
+    <CustomList sort={{ field: 'year', order: 'DESC' }} title="Календари">
         <Datagrid rowClick="show">
             <NumberField source="year" label="Година" />
             <FunctionField 
@@ -23,5 +24,5 @@ export const CalendarList = () => (
                 render={(record: any) => record.monthsData && Object.keys(record.monthsData).length === 12 ? 'Готов' : 'Частичен'} 
             />
         </Datagrid>
-    </List>
+    </CustomList>
 );
